@@ -1,10 +1,12 @@
+from matplotlib import animation
+from Queue import Queue
+from scipy import signal
+from threading import Thread
+import fractions
 import matplotlib.pyplot as plt
 import numpy as np
 import sounddevice as sd
-import fractions
 import time
-from scipy import signal
-from matplotlib import animation
 
 class Speech_Sampler():
 
@@ -48,6 +50,12 @@ class Speech_Sampler():
         self.__tracking_index = int(length - self.__audio_frame_size / 2 - 1)
         self.__zero_crossings = np.zeros(length)
         self.__zero_crossings_threshold = 0
+
+        # Callbacks
+        self.__callbacks = []
+        self.__callback_sleep_time = 0.025 # seconds
+        self.__speech_segments = Queue()
+        self.__stop_processing = False
 
     def __audio_callback(self, indata, frames, time, status):
         data = indata[:, 0]
@@ -93,6 +101,7 @@ class Speech_Sampler():
                 if (signal_data.size != 0):
                     self.__speech_detections[n1 : n2] = np.max(signal_data)
                     self.__last_speech_detection_index = n2
+                    self.__speech_segments.put(np.copy(signal_data))
 
         # Compute zero-crossing thresholds
         if (self.__audio_frame_count < self.__silence_threshold_frame_size) and ((self.__audio_frame_count + shift) >= self.__silence_threshold_frame_size):
@@ -312,6 +321,18 @@ class Speech_Sampler():
         ax.set_xlim([-self.__window_duration, 0])
         ax.tick_params(bottom='on', top='off', labelbottom='on', right='off', left='on', labelleft='on')
 
+    def __process_speech_segments(self):
+        while not self.__stop_processing:
+            time.sleep(self.__callback_sleep_time)
+
+            if self.__speech_segments.empty():
+                continue
+            
+            while not self.__speech_segments.empty():
+                speech_segment = self.__speech_segments.get()
+                for callback in self.__callbacks:
+                    callback(speech_segment)
+                
     def __scale_plot(self, ax, data, grow_only = True):
         max_val = max(data)
         min_val = min(data)
@@ -398,6 +419,9 @@ class Speech_Sampler():
         for _,line in enumerate(self.__zero_crossings_plot_threshold_data):
             line.set_ydata(threshold_data)
 
+    def add_sample_callback(self, callback):
+        self.__callbacks.append(callback)
+
     def hide_energy_plot(self, hide = True):
         self.__hide_energy_plot = hide
 
@@ -417,14 +441,16 @@ class Speech_Sampler():
         self.__pause = False
         self.__animation.event_source.start()
 
-    def start(self):
+    def run(self):
         self.__create_plots()
-        
+ 
         # Need reference to animation otherwise garbage collector removes it...
         self.__animation = animation.FuncAnimation(self.__fig, self.__update_plots, interval = self.__data_update_interval * 1000, blit = True)
         stream = sd.InputStream(channels=1, samplerate=self.__fs, callback=self.__audio_callback)
+        callback_thread = Thread(target = self.__process_speech_segments)
 
         with stream:
+            callback_thread.start()
             plt.show(block = False)
             print("")
             while True:
@@ -432,10 +458,13 @@ class Speech_Sampler():
                 self.pause()
                 raw_input("Press any key to resume")
                 self.resume()
+        
+        self.__stop_processing = True
+        callback_thread.join()
 
 if __name__ == '__main__':
     sampler = Speech_Sampler(5)
     sampler.hide_spectrogram_plot()
     #sampler.hide_energy_plot()
     #sampler.hide_zero_crossing_plot()
-    sampler.start()
+    sampler.run()
