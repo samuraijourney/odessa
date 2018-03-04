@@ -44,9 +44,10 @@ class Speech_Sampler():
         self.__silence_speech_detect = np.zeros(length)
         self.__silence_zero_crossing_threshold = 0
         self.__silence_sample_count = 0
-        self.__silence_threshold_samples = 100
-        self.__silence_threshold_samples_speech_detection = 50 * self.__silence_samples
+        self.__silence_threshold_samples_speech_detection = 150 * self.__silence_samples
+        self.__silence_threshold_samples = 100 * self.__silence_samples
         self.__silence_std_deviation = 0
+        self.__time = np.linspace(-self.__window_duration, 0, length)
         self.__tracking_index = int(length - self.__silence_samples / 2 - 1)
 
     def __audio_callback(self, indata, frames, time, status):
@@ -72,28 +73,35 @@ class Speech_Sampler():
         signal_start_index = self.__tracking_index
         signal_end_index = self.__tracking_index + shift
 
-        threshold_samples_radius = self.__silence_threshold_samples_speech_detection / 2
-        threshold_start_index = signal_start_index - threshold_samples_radius
-        threshold_end_index = signal_end_index - threshold_samples_radius
-
         signal_samples = self.__build_sample_matrix(self.__data, signal_start_index, signal_end_index, signal_samples_radius * 2)
 
         # Compute energy
-        self.__silence_energy[signal_start_index : signal_end_index] = self.__calculate_energy(signal_samples)
+        self.__silence_energy[-shift:] = self.__calculate_energy(signal_samples)
         
         # Compute energy thresholds
-        energy_samples = self.__build_sample_matrix(self.__silence_energy, threshold_start_index, threshold_end_index, threshold_samples_radius * 2)
+        energy_samples = self.__build_sample_matrix(self.__silence_energy, signal_start_index, signal_end_index, signal_samples_radius * 2)
         energy_thresholds = self.__calculate_energy_threshold(energy_samples)
-        self.__silence_energy_min_thresholds[threshold_start_index : threshold_end_index] = energy_thresholds[0, :]
-        self.__silence_energy_max_thresholds[threshold_start_index : threshold_end_index] = energy_thresholds[1, :]
+        self.__silence_energy_min_thresholds[-shift:] = energy_thresholds[0, :]
+        self.__silence_energy_max_thresholds[-shift:] = energy_thresholds[1, :]
 
         # Compute zero crossings    
-        self.__silence_zero_crossings[signal_start_index : signal_end_index] = self.__calculate_zero_crossings(signal_samples)
+        self.__silence_zero_crossings[-shift:] = self.__calculate_zero_crossings(signal_samples)
 
         # Compute zero-crossing thresholds
         if (self.__silence_sample_count < self.__silence_threshold_samples) and ((self.__silence_sample_count + shift) >= self.__silence_threshold_samples):
-            zero_crossings_samples = self.__silence_zero_crossings[threshold_start_index : threshold_end_index]
+            zero_crossings_samples = self.__silence_zero_crossings[signal_end_index - self.__silence_threshold_samples : signal_end_index]
             self.__silence_zero_crossing_threshold = self.__calculate_zero_crossing_threshold(zero_crossings_samples)
+
+        # Check for speech  
+        if self.__silence_sample_count >= self.__silence_threshold_samples:
+            energies = self.__silence_energy[-self.__silence_threshold_samples_speech_detection:]
+            zero_crossings = self.__silence_zero_crossings[-self.__silence_threshold_samples_speech_detection:]
+            energies_min_thresholds = self.__silence_energy_min_thresholds[-self.__silence_threshold_samples_speech_detection:]
+            energies_max_thresholds = self.__silence_energy_max_thresholds[-self.__silence_threshold_samples_speech_detection:]
+            n1, n2 = self.__find_speech_segment(energies, zero_crossings, energies_min_thresholds, energies_max_thresholds, self.__silence_zero_crossing_threshold, len(energies))
+            if not np.isnan(n1):
+                self.__silence_speech_detect[n1] = 1
+                self.__silence_speech_detect[n2] = 1
 
         self.__tracking_index = self.__tracking_index + shift
         self.__silence_sample_count = self.__silence_sample_count + shift
@@ -112,8 +120,8 @@ class Speech_Sampler():
         max_energy = np.max(energies, axis = 0)
         min_energy = np.min(energies, axis = 0)
 
-        min_threshold_energy = np.min((0.03 * (max_energy - min_energy) + min_energy, 4 * min_energy), axis = 0)
-        max_threshold_energy = 5 * min_threshold_energy
+        min_threshold_energy = np.min((0.1 * (max_energy - min_energy) + min_energy, 4 * min_energy), axis = 0)
+        max_threshold_energy = 3 * min_threshold_energy
 
         return np.stack((min_threshold_energy, max_threshold_energy), axis = 0)
 
@@ -159,122 +167,91 @@ class Speech_Sampler():
 
         self.__fig.tight_layout(pad = 0)
 
-    def __find_speech_start(self, energies, zero_crossings):
-        min_energy_crossed = False
-        max_energy_crossed = False
-
-        energy_index = np.nan
-        min_energy_first = False
-
-        min_energy_threshold, max_energy_threshold = self.__calculate_energy_threshold(energies)
-
-        # Search for energy start
-        for i in range(1, len(energies)):
-            min_crossing = np.sign(energies[-i - 1] - min_energy_threshold) + np.sign(energies[-i] - min_energy_threshold)
-            max_crossing = np.sign(energies[-i - 1] - max_energy_threshold) + np.sign(energies[-i] - max_energy_threshold)
-
-            # Crossing max twice
-            if (max_crossing == 0) and max_energy_crossed:
-                return np.nan
-
-            # Crossing min twice
-            if (min_crossing == 0) and min_energy_crossed:
-                return np.nan
-
-            # Crossing min once
-            if min_crossing == 0:
-                min_energy_crossed = True
-
-            # Crossing max once
-            if max_crossing == 0:
-                max_energy_crossed = True
-
-            # Crossing neither in the first iteration
-            if (not min_energy_crossed) and (not max_energy_crossed):
-                return np.nan
-            elif i == 1:
-                if min_energy_crossed:
-                    min_energy_first = True
-
-            # Crossed min and max
-            if min_energy_crossed and max_energy_crossed:
-                if min_energy_first:
-                    energy_index = -1
-                else:
-                    energy_index = -i
-                break
-
-        if np.isnan(energy_index):
-            return np.nan
-
-        # Search for zero crossings        
-        if np.abs(energy_index - 25) > (len(zero_crossings) + 1):
-            return np.nan
-
-        start_index = np.nan
-        above_zero_crossing_threshold_count = 0
-
-        for i in range(0, 25):
-            above_zero_crossing_threshold = max(np.sign(zero_crossings[energy_index - i] - self.__silence_zero_crossing_threshold), 0)
-            above_zero_crossing_threshold_count = above_zero_crossing_threshold_count + above_zero_crossing_threshold
-
-            if above_zero_crossing_threshold == 1:
-                start_index = energy_index - i
-        
-        if above_zero_crossing_threshold_count < 3:
-            return np.nan
-        
-        return start_index
-
-    def __find_speech_start2(self, energies, zero_crossings, energy_min_thresholds, energy_max_thresholds, zero_crossing_thresholds):
+    def __find_speech_segment(self, energies, zero_crossings, energy_min_thresholds, energy_max_thresholds, zero_crossing_threshold, max_distance):
         n1 = np.nan
         n2 = np.nan
 
-        # Find first instance where we dip below the ITL from the end
-        for i in range(1, len(energies)):
-            index = -i - 1
-            if energies[i] > energy_min_thresholds[i]:
-                continue
-            
-        for i in range(-index - 1, len(energies)):
+        # Find where we dip below the ITL from the end
+        for i in range(1, max_distance):
             index = -i - 1
             if energies[i] < energy_min_thresholds[i]:
-                continue
-        
-        #if index + 25 
+                break
 
-        for i in range(0, 25):
+        if index < -max_distance:
+            return np.nan, np.nan
+
+        # Find where we go above ITL from the end      
+        for i in range(-index - 1, max_distance):
             index = -i - 1
-            above_zero_crossing_threshold = max(np.sign(zero_crossings[index] - zero_crossing_thresholds[index]), 0)
-            #above_zero_crossing_threshold_count = above_zero_crossing_threshold_count + above_zero_crossing_threshold
+            if energies[i] > energy_min_thresholds[i]:
+                break
 
-            #if above_zero_crossing_threshold == 1:
-           #     start_index = energy_index - i
+        if index < -max_distance:
+            return np.nan, np.nan
+
+        n2 = index
+
+        # Find where we exceed ITU
+        for i in range(-index - 1, max_distance):
+            index = -i - 1
+            # Dipped under the min threshold before exceeding max
+            if energies[index] < energy_min_thresholds[index]:
+                return np.nan, np.nan
+            if energies[index] > energy_max_thresholds[index]:
+                break
+    
+        # Find where we dip below ITL
+        for i in range(-index - 1, max_distance):
+            index = -i - 1
+            # Dipped under the min threshold before exceeding max
+            if energies[index] < energy_min_thresholds[index]:
+                break
+
+        # Not enough data to search zero crossings in back
+        if index - 25 < -max_distance:
+            return np.nan, np.nan
         
-       #if above_zero_crossing_threshold_count < 3:
-        #    return np.nan
-        
-        #return start_index
+        n1 = index
+        index_start = n1
+        index_end = n2
+        zc_start_count = 0
+        zc_end_count = 0
+
+        # Look for fricatives
+        for i in range(0, 25):
+            zc_start = np.max(np.sign(zero_crossings[index_start - i] - zero_crossing_threshold), 0)
+            zc_start_count = zc_start_count + zc_start
+            zc_end = np.max(np.sign(zero_crossings[index_end + i] - zero_crossing_threshold), 0)
+            zc_end_count = zc_end_count + zc_end
+
+            # Move N1 to account for trailing fricatives
+            if (zc_start == 1) and (zc_start_count >= 3):
+                n1 = index_start - i
+            # Move N2 to account for leading fricatives
+            if (zc_end == 1) and (zc_end_count >= 3):
+                n2 = index_end + i
+
+        return n1, n2
 
     def __initialize_energy_plot(self, ax, data, min_threshold_data, max_threshold_data):
         self.__energy_plot = ax
-        self.__energy_plot_data = ax.plot(data)
-        self.__energy_plot_min_data = ax.plot(min_threshold_data, color='r')
-        self.__energy_plot_max_data = ax.plot(max_threshold_data, color='r')
+        self.__energy_plot_data = ax.plot(self.__time, data)
+        self.__energy_plot_min_data = ax.plot(self.__time, min_threshold_data, color='r')
+        self.__energy_plot_max_data = ax.plot(self.__time, max_threshold_data, color='r')
 
         ax.axis((0, len(data), 0, 1))
         ax.set_title("Energy")
         ax.xaxis.grid(True)
         ax.yaxis.grid(True)
-        ax.tick_params(bottom='off', top='off', labelbottom='off', right='off', left='on', labelleft='on')
+        ax.set_xlabel("Time (s)")
+        ax.set_xlim([-self.__window_duration, 0])
+        ax.tick_params(bottom='on', top='off', labelbottom='on', right='off', left='on', labelleft='on')
 
-    def __initialize_signal_plot(self, ax, signal_data, speech_detect_data):
-        time = np.linspace(-self.__window_duration, 0, len(signal_data))
-        
+    def __initialize_signal_plot(self, ax, signal_data, speech_detect_data):        
         self.__signal_plot = ax
-        self.__signal_plot_data = ax.plot(time, signal_data)
-        self.__signal_plot_speech_detect_data = ax.plot(time, speech_detect_data, color='r')
-        self.__garbage_plot_data = ax.plot(time, np.full(len(signal_data), np.nan))
+        self.__signal_plot_data = ax.plot(self.__time, signal_data)
+        self.__signal_plot_speech_detect_data = ax.plot(self.__time, speech_detect_data, color='r')
+        self.__garbage_plot_data = ax.plot(self.__time, np.full(len(signal_data), np.nan))
 
         ax.set_title("Audio")
         ax.axis((0, len(signal_data), -0.25, 0.25))
@@ -292,14 +269,16 @@ class Speech_Sampler():
 
     def __initialize_zero_crossings_plot(self, ax, data):
         self.__silence_zero_crossings_plot = ax
-        self.__silence_zero_crossings_plot_data = ax.plot(data)
-        self.__silence_zero_crossings_plot_threshold_data = ax.plot(np.full(len(data), self.__silence_zero_crossing_threshold), color='r')
+        self.__silence_zero_crossings_plot_data = ax.plot(self.__time, data)
+        self.__silence_zero_crossings_plot_threshold_data = ax.plot(self.__time, np.full(len(data), self.__silence_zero_crossing_threshold), color='r')
 
         ax.axis((0, len(data), 0, 0.1))
         ax.set_title("Zero Crossings")
         ax.xaxis.grid(True)
         ax.yaxis.grid(True)
-        ax.tick_params(bottom='off', top='off', labelbottom='off', right='off', left='on', labelleft='on')
+        ax.set_xlabel("Time (s)")
+        ax.set_xlim([-self.__window_duration, 0])
+        ax.tick_params(bottom='on', top='off', labelbottom='on', right='off', left='on', labelleft='on')
 
     def __scale_plot(self, ax, data, grow_only = True):
         max_val = max(data)
