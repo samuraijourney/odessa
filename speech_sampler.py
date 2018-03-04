@@ -438,33 +438,23 @@ class Speech_Sampler():
         self.__pause = True
 
     def resume(self):
-        self.__pause = False
-        self.__animation.event_source.start()
+        if (self.__pause == True):
+            self.__animation.event_source.start()
+            self.__pause = False
 
-    def run(self):
-        self.__create_plots()
- 
-        # Need reference to animation otherwise garbage collector removes it...
-        self.__animation = animation.FuncAnimation(self.__fig, self.__update_plots, interval = self.__data_update_interval * 1000, blit = True)
+    def run(self): 
         stream = sd.InputStream(channels=1, samplerate=self.__fs, callback=self.__audio_callback)
         callback_thread = Thread(target = self.__process_speech_segments)
 
         with stream:
             callback_thread.start()
-            plt.show(block = False)
-            print("")
             while True:
-                raw_input("Press any key to pause")
-                self.pause()
-                raw_input("Press any key to resume")
-                self.resume()
+                self.__create_plots()
+
+                # Need reference to animation otherwise garbage collector removes it...
+                self.__animation = animation.FuncAnimation(self.__fig, self.__update_plots, interval = self.__data_update_interval * 1000, blit = True)
+                plt.show()
+                self.__pause = False
         
         self.__stop_processing = True
         callback_thread.join()
-
-if __name__ == '__main__':
-    sampler = Speech_Sampler(5)
-    sampler.hide_spectrogram_plot()
-    #sampler.hide_energy_plot()
-    #sampler.hide_zero_crossing_plot()
-    sampler.run()
