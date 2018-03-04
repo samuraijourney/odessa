@@ -86,25 +86,26 @@ class Speech_Sampler():
         self.__silence_zero_crossings[-shift:] = self.__calculate_zero_crossings(signal_samples)
 
         # Check for speech  
-        if (self.__silence_sample_count >= self.__silence_threshold_samples) and (np.mod(self.__silence_sample_count, 10 * shift) == 0):
+        if (self.__silence_sample_count >= self.__silence_threshold_samples) and (np.mod(self.__silence_sample_count, 5 * shift) == 0):
             
             # Compute energy thresholds
-            self.__silence_energy_min = np.min(self.__silence_energy[-10 * shift:])
-            self.__silence_energy_max = np.max(self.__silence_energy[-10 * shift:])
+            self.__silence_energy_min = np.min(self.__silence_energy[-5 * shift:])
+            self.__silence_energy_max = np.max(self.__silence_energy[-5 * shift:])
             energy_thresholds = self.__calculate_energy_threshold(self.__silence_energy_min, self.__silence_energy_max)
             
-            index = max(-self.__silence_threshold_samples_speech_detection, self.__last_speech_detection_index)
+            index = max(-int(self.__window_duration * self.__fs), self.__last_speech_detection_index)
             energies = self.__silence_energy[index:]
             zero_crossings = self.__silence_zero_crossings[index:]
             n1, n2 = self.__find_speech_segment(energies, zero_crossings, energy_thresholds[0], energy_thresholds[1], self.__silence_zero_crossing_threshold, len(energies))
             if not np.isnan(n1):
-                self.__silence_speech_detect[n1] = 1
-                self.__silence_speech_detect[n2] = 1
-                self.__silence_energy_min_thresholds[n1 : n2] = energy_thresholds[0]
-                self.__silence_energy_max_thresholds[n1 : n2] = energy_thresholds[1]
-                self.__silence_energy_min = np.infty
-                self.__silence_energy_max = 0
-                self.__last_speech_detection_index = n2
+                signal_data = self.__data[n1 : n2]
+                if (signal_data.size != 0):
+                    self.__silence_speech_detect[n1 : n2] = np.max(signal_data)
+                    self.__silence_energy_min_thresholds[n1 : n2] = energy_thresholds[0]
+                    self.__silence_energy_max_thresholds[n1 : n2] = energy_thresholds[1]
+                    self.__silence_energy_min = np.infty
+                    self.__silence_energy_max = 0
+                    self.__last_speech_detection_index = n2
 
         # Compute zero-crossing thresholds
         if (self.__silence_sample_count < self.__silence_threshold_samples) and ((self.__silence_sample_count + shift) >= self.__silence_threshold_samples):
@@ -125,8 +126,8 @@ class Speech_Sampler():
         return np.sum(np.abs(data), axis = 0)
 
     def __calculate_energy_threshold(self, min_energy, max_energy):
-        min_threshold_energy = np.min((0.03 * (max_energy - min_energy) + min_energy, 4 * min_energy), axis = 0)
-        max_threshold_energy = 10 * min_threshold_energy
+        min_threshold_energy = np.min((0.00 * (max_energy - min_energy) + min_energy, 4 * min_energy), axis = 0)
+        max_threshold_energy = 5 * min_threshold_energy
 
         return np.stack((min_threshold_energy, max_threshold_energy), axis = 0)
 
@@ -176,7 +177,7 @@ class Speech_Sampler():
         n1 = np.nan
         n2 = np.nan
         index = -1
-        lookahead = int(0.25 * self.__fs)
+        lookahead = int(0.5 * self.__fs)
 
         while index > -max_distance:
 
@@ -247,6 +248,10 @@ class Speech_Sampler():
             # Move N2 to account for leading fricatives
             if (zc_end == 1) and (zc_end_count >= 3):
                 n2 = index_end + i
+
+        # Phrase is to short, most likely not speech
+        if ((n2 - n1) / float(self.__fs)) < 0.25:
+            return np.nan, np.nan
 
         return n1, n2
 
