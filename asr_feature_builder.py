@@ -252,6 +252,15 @@ class ASR_Feature_Builder:
         plt.ylabel('coefficients')
         plt.show(block = self.__blocking)
 
+    def plot_mfcc_transitions(self, nfilters):
+        plt.figure()
+        for i in range(0, self.__nwindows):
+            plt.plot(range(0, nfilters), self.__mfcc_features_matrix[0:nfilters, i])
+        plt.title("MFCC transitions for all windows")
+        plt.xlabel('index')
+        plt.ylabel('coefficients')
+        plt.show(block = self.__blocking)
+
     def plot_signal(self):
         plt.figure()
         duration = self.__signal.size / float(self.__fs)

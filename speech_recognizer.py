@@ -28,6 +28,10 @@ def asr_feature_builder_plot(plot_options):
         feature_builder.plot_all_filtered_spectra_sum_log()
     elif option == 6:
         feature_builder.plot_all_filtered_spectra_mfcc()
+    elif option == 7:
+        feature_builder.plot_mfcc_transitions(nfilters_to_keep)
+    elif option == 8:
+        feature_builder.plot_signal()
 
 class ASR_Feature_Builder_Plot_Options:
 
@@ -105,6 +109,8 @@ class Speech_Recognizer:
                             "   7) Plot filter bank filtered spectra sum\n"
                             "   8) Plot filter bank filtered spectra sum log\n"
                             "   9) Plot filter bank filtered spectra sum log dct (mfcc)\n"
+                            "  10) Plot mfcc transitions\n"
+                            "  11) Plot speech segment\n"
                             "\n"
                             "To resume you have to exit the plot cause matplotlib is stupid...\n"
                         )
@@ -114,7 +120,7 @@ class Speech_Recognizer:
 
                 try: 
                     option = int(text)
-                    if option > 9:
+                    if option > 11:
                         continue
                     else:
                         invalid_selection = False
@@ -149,12 +155,13 @@ class Speech_Recognizer:
                 self.__feature_radius, \
                 self.__feature_nfilters_keep)
 
-            self.__pool.map(asr_feature_builder_plot, \
-                [ASR_Feature_Builder_Plot_Options( \
+            plot_options = ASR_Feature_Builder_Plot_Options( \
                     self.__feature_builder, \
                     self.__plot_option, \
                     self.__feature_nfilters_keep \
-                )])
+                )
+
+            self.__pool.map(asr_feature_builder_plot, [plot_options])
 
     def __queue_speech_segment(self, speech_segment):
         self.__queue_lock.acquire(True)
