@@ -28,8 +28,8 @@ class EM:
         a = np.zeros((nstates, feature_matrix.shape[1]))
         b = np.zeros(a.shape)
 
-        a[0, 0] = 1
-        b[:, -1] = 1 / float(len(b[:, -1]))
+        a[:, 0] = hmm_parameters.get_initial_state_vector()
+        b[:, -1] = 1 / float(nstates)
 
         for t in range(1, a.shape[1]):
 
@@ -49,8 +49,14 @@ class EM:
                 self.__compute_gaussian_probability(feature_matrix[:, -t], mean_matrix, variance_matrix) \
             )
 
-            a[:, t] = np.true_divide(a[:, t], np.sum(a[:, t]))
-            b[:, -t - 1] = np.true_divide(b[:, -t - 1], np.sum(b[:, -t - 1]))
+            a_sum = np.sum(a[:, t])
+            b_sum = np.sum(b[:, -t - 1])
+
+            if a_sum != 0:
+                a[:, t] = np.true_divide(a[:, t], a_sum)
+            
+            if b_sum != 0:
+                b[:, -t - 1] = np.true_divide(b[:, -t - 1], b_sum)
 
         return a, b
 
@@ -65,38 +71,133 @@ class EM:
         mean_matrix = hmm_parameters.get_mean_matrix()
         transition_matrix = hmm_parameters.get_transition_matrix()
         variance_matrix = hmm_parameters.get_variance_matrix()
+        nstates = a.shape[0]
+        nframes = a.shape[1]
 
         g = np.zeros(a.shape)
-        z = np.zeros(a.shape)
+        z = np.zeros((nstates, nstates, nframes))
 
         ab = np.multiply(a[:, 0], b[:, 0])
-        g[:, 0] = np.true_divide(ab, np.sum(ab))
+        ab_sum = np.sum(ab)
 
-        for t in range(1, z.shape[1]):
+        if ab_sum != 0:
+            g[:, 0] = np.true_divide(ab, ab_sum)
+
+        for t in range(1, nframes):
             ab = np.multiply(a[:, t], b[:, t])
-            g[:, t] = np.true_divide(ab, np.sum(ab))
+            ab_sum = np.sum(ab)
 
-            z[:, t] = np.multiply( \
-                np.multiply( \
-                    np.dot( \
-                        transition_matrix,
-                        a[:, t - 1] \
-                    ), \
-                    b[:, t] \
-                ), \
-                self.__compute_gaussian_probability(feature_matrix[:, t], mean_matrix, variance_matrix) \
-            )
+            if ab_sum != 0:
+                g[:, t] = np.true_divide(ab, ab_sum)
 
-        g = np.true_divide(g, np.max(g, axis = 0))
-        z = np.true_divide(z, np.max(z, axis = 0))
-        
+            p = self.__compute_gaussian_probability(feature_matrix[:, t], mean_matrix, variance_matrix)
+
+            for q2 in range(0, nstates):
+                for q1 in range(0, nstates):
+                    z[q1, q2, t] = b[q2, t] * a[q1, t - 1] * transition_matrix[q1, q2] * p[q2]
+
         return g, z
+
+    def __compute_new_hmm_parameters(self, feature_matrices, hmm_parameters):
+        a_matrices = []
+        b_matrices = []
+        g_matrices = []
+        z_matrices = []
+
+        for feature_matrix in feature_matrices:
+            self.__a, self.__b = self.__compute_ab_matrix(feature_matrix, hmm_parameters)
+            self.__g, self.__z = self.__compute_gz(self.__a, self.__b, feature_matrix, hmm_parameters)
+            a_matrices.append(self.__a)
+            b_matrices.append(self.__b)
+            g_matrices.append(self.__g)
+            z_matrices.append(self.__z)
+        
+        new_initial_state_vector = self.__compute_new_initial_state_vector(a_matrices, b_matrices)
+        new_transition_matrix = self.__compute_new_state_transition_matrix(g_matrices, z_matrices)
+        new_mean_matrix = self.__compute_new_mean_matrix(feature_matrices, g_matrices)
+        new_variance_matrix = self.__compute_new_variance_matrix(feature_matrices, new_mean_matrix, g_matrices)
+        
+        return HMM_Parameters(hmm_parameters.get_nstates(), new_initial_state_vector, new_transition_matrix, new_mean_matrix, new_variance_matrix)
+
+    def __compute_new_initial_state_vector(self, a_matrices, b_matrices):
+        nstates = a_matrices[0].shape[0]
+        initial_state_vector = np.zeros(nstates)
+
+        for i in range(0, len(a_matrices)):
+            a = a_matrices[i]
+            b = b_matrices[i]
+            ab = np.multiply(a[:, 1], b[:, 1])
+            ab_sum = np.sum(ab)
+            if ab_sum != 0:
+                initial_state_vector = initial_state_vector + np.true_divide(ab, ab_sum)
+        
+        initial_state_vector = np.true_divide(initial_state_vector, len(a_matrices))
+        return np.true_divide(initial_state_vector, np.sum(initial_state_vector))
+
+    def __compute_new_mean_matrix(self, feature_matrices, g_matrices):
+        nstates = g_matrices[0].shape[0]
+        nfeatures = feature_matrices[0].shape[0]
+        mean_matrix = np.zeros((nfeatures, nstates), dtype = np.float)
+        numerator = np.zeros(nfeatures)
+        denominator = 0.0
+
+        for q in range(0, nstates):
+            for i in range(0, len(feature_matrices)):
+                feature_matrix = feature_matrices[i]
+                g = g_matrices[i]
+                numerator = numerator + np.sum(np.multiply(feature_matrix, g[q, :]), axis = 1)
+                denominator = denominator + np.sum(g[q, :])
+            mean_matrix[:, q] = numerator / float(denominator)
+        
+        return mean_matrix
+
+    def __compute_new_state_transition_matrix(self, g_matrices, z_matrices):
+        nstates = g_matrices[0].shape[0]
+        transition_matrix = np.zeros((nstates, nstates), dtype = np.float)
+        numerator = np.zeros((nstates, nstates))
+        denominator = np.zeros(nstates)
+
+        for i in range(0, len(g_matrices)):
+            g = g_matrices[i]
+            z = z_matrices[i]
+            numerator = numerator + np.sum(z[:, :, 2:], axis = 2)
+            denominator = denominator + np.sum(g[:, 2:], axis = 1)
+        transition_matrix = np.true_divide(numerator, denominator)
+        transition_matrix = np.transpose(np.true_divide(np.transpose(transition_matrix), np.sum(transition_matrix, axis = 1)))
+
+        return transition_matrix
+
+    def __compute_new_variance_matrix(self, feature_matrices, new_mean_matrix, g_matrices):
+        nstates = g_matrices[0].shape[0]
+        nfeatures = feature_matrices[0].shape[0]
+        variance_matrix = np.zeros((nfeatures, nstates), dtype = np.float)
+        numerator = np.zeros(nfeatures)
+        denominator = 0.0
+
+        for q in range(0, nstates):
+            for i in range(0, len(feature_matrices)):
+                feature_matrix = feature_matrices[i]
+                g = g_matrices[i]
+                numerator = numerator + np.sum( \
+                    np.multiply( \
+                        np.square( \
+                            feature_matrix - new_mean_matrix[:, q].reshape((nfeatures, 1)) \
+                        ), \
+                        g[q, :] \
+                    ), \
+                    axis = 1 \
+                )
+                denominator = denominator + np.sum(g[q, :])
+            variance_matrix[:, q] = numerator / float(denominator)
+        
+        return variance_matrix
 
     def __convert_vector_to_matrix(self, vector, ncolumns):
         return np.transpose(np.tile(vector, (ncolumns, 1)))
 
     def __initialize_hmm_parameters(self, nstates, feature_matrices):
         nfeatures = feature_matrices[0].shape[0]
+        initial_state_vector = np.zeros(nstates, dtype = np.float)
         variance_vector = np.zeros(nfeatures, dtype = np.float)
         mean_vector = np.zeros(nfeatures, dtype = np.float)
         transition_matrix = np.zeros((nstates, nstates), dtype = np.float)
@@ -104,6 +205,7 @@ class EM:
         for feature_matrix in feature_matrices:
             variance_vector = np.add(variance_vector, np.square(np.std(feature_matrix, axis = 1)))
             mean_vector = np.add(mean_vector, np.mean(feature_matrix, axis = 1))    
+
         variance_vector = np.true_divide(variance_vector, len(feature_matrices))
         mean_vector = np.true_divide(mean_vector, len(feature_matrices))
 
@@ -119,11 +221,10 @@ class EM:
             mean_noise_matrix[i, :] = mean_scale * mean_noise_matrix[i, :]
             variance_noise_matrix[i, :] = variance_scale * variance_noise_matrix[i, :]
 
-        #mean_matrix = np.add(mean_matrix, mean_noise_matrix)
-        #variance_matrix = np.add(variance_matrix, variance_noise_matrix)
+        mean_matrix = np.add(mean_matrix, mean_noise_matrix)
+        variance_matrix = np.add(variance_matrix, variance_noise_matrix)
 
         for i in range(0, nstates - 1):
-            #stay_probability = np.random.uniform(0, 1, 1)[0]
             stay_probability = 0.5
             transition_probability = 1 - stay_probability
             transition_matrix[i, i] = transition_probability
@@ -132,7 +233,11 @@ class EM:
         # At the end the probability of staying is 100% since it is the end of the HMM
         transition_matrix[-1, -1] = 1 
 
-        return HMM_Parameters(nstates, transition_matrix, mean_matrix, variance_matrix)
+        for i in range(0, nstates):
+            initial_state_vector[i] = np.power(0.5, (i + 1) ** 2)     
+        initial_state_vector[0] = initial_state_vector[0] + (1 - np.sum(initial_state_vector))
+
+        return HMM_Parameters(nstates, initial_state_vector, transition_matrix, mean_matrix, variance_matrix)
 
     def build_hmm_from_folder(self, folder_path, nstates):
         audio_files = []
@@ -155,14 +260,10 @@ class EM:
         return self.build_hmm_from_signals(signals, fs, nstates)
 
     def build_hmm_from_feature_matrices(self, feature_matrices, nstates):
-        hmm_parameters = self.__initialize_hmm_parameters(nstates, feature_matrices)
+        old_hmm_parameters = self.__initialize_hmm_parameters(nstates, feature_matrices)
 
-        for feature_matrix in feature_matrices:
-            self.__a, self.__b = self.__compute_ab_matrix(feature_matrix, hmm_parameters)
-            self.__g, self.__z = self.__compute_gz(self.__a, self.__b, feature_matrix, hmm_parameters)
-            
-            self.plot_all_matrices()
-        
+        new_hmm_parameters = self.__compute_new_hmm_parameters(feature_matrices, old_hmm_parameters)
+
         return None
 
     def build_hmm_from_signals(self, signals, fs, nstates):
@@ -188,22 +289,10 @@ class EM:
         return self.build_hmm_from_signals(self.__speech_segments, fs, nstates)
 
     def plot_all_matrices(self, show = True):
-        self.plot_alpha_beta_multiply_sum(False)
         self.plot_alpha_matrix(False)
         self.plot_beta_matrix(False)
-        #self.plot_gamma_matrix(False)
-        #self.plot_zeta_matrix(False)
+        self.plot_gamma_matrix(False)
 
-        if show == True:
-            plt.show()
-
-    def plot_alpha_beta_multiply_sum(self, show = True):
-        plt.figure()
-        plt.imshow([np.sum(np.multiply(self.__a, self.__b), axis = 0)], aspect='auto')
-        plt.title("Sum alpha * beta vector")
-        plt.xlabel('frames')
-        plt.ylabel('states')
-        
         if show == True:
             plt.show()
 
@@ -237,29 +326,18 @@ class EM:
         if show == True:
             plt.show()
 
-    def plot_zeta_matrix(self, show = True):
-        plt.figure()
-        plt.imshow(self.__z, aspect='auto')
-        plt.title("Zeta matrix")
-        plt.xlabel('frames')
-        plt.ylabel('states')
-        
-        if show == True:
-            plt.show()
-
-    #def train_hmm_live(self):
-
 class HMM_Parameters:
 
-    def __init__(self, nstates, transition_matrix, mean_matrix, variance_matrix):
-        self.__variance_matrix = variance_matrix
+    def __init__(self, nstates, initial_state_vector, transition_matrix, mean_matrix, variance_matrix):
+        self.__initial_state_vector = initial_state_vector
         self.__mean_matrix = mean_matrix
         self.__nstates = nstates
         self.__transition_matrix = transition_matrix
-    
-    def get_variance_matrix(self):
-        return self.__variance_matrix
-    
+        self.__variance_matrix = variance_matrix
+
+    def get_initial_state_vector(self):
+        return self.__initial_state_vector
+
     def get_mean_matrix(self):
         return self.__mean_matrix
 
@@ -269,8 +347,11 @@ class HMM_Parameters:
     def get_transition_matrix(self):
         return self.__transition_matrix
 
+    def get_variance_matrix(self):
+        return self.__variance_matrix
+
 if __name__ == '__main__':
     folder_path = "C:\Users\AkramAsylum\OneDrive\Courses\School\EE 516 - Compute Speech Processing\Assignments\Assignment 5\samples\odessa"
 
     em = EM()
-    em.build_hmm_from_folder(folder_path, 40)
+    em.build_hmm_from_folder(folder_path,10)
