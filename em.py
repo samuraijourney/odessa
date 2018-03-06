@@ -253,8 +253,8 @@ class EM:
         for i in range(0, nstates - 1):
             stay_probability = 0.5
             transition_probability = 1 - stay_probability
-            transition_matrix[i, i] = transition_probability
-            transition_matrix[i, i + 1] = 1 - transition_probability
+            transition_matrix[i, i] = stay_probability
+            transition_matrix[i, i + 1] = transition_probability
 
         # At the end the probability of staying is 100% since it is the end of the HMM
         transition_matrix[-1, -1] = 1 
