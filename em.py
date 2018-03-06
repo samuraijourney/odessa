@@ -28,8 +28,8 @@ class EM:
         a = np.zeros((nstates, feature_matrix.shape[1]))
         b = np.zeros(a.shape)
 
-        a[:, 0] = hmm_parameters.get_initial_state_vector()
-        b[:, -1] = 1 / float(nstates)
+        a[0, 0] = 1#hmm_parameters.get_initial_state_vector()
+        b[-1, -1] = 1
 
         for t in range(1, a.shape[1]):
 
@@ -43,7 +43,7 @@ class EM:
 
             b[:, -t - 1] = np.multiply(
                 np.dot( \
-                    np.transpose(transition_matrix), \
+                    transition_matrix, \
                     b[:, -t] \
                 ), \
                 self.__compute_gaussian_probability(feature_matrix[:, -t], mean_matrix, variance_matrix) \
@@ -59,6 +59,12 @@ class EM:
                 b[:, -t - 1] = np.true_divide(b[:, -t - 1], b_sum)
 
         return a, b
+
+    def __compute_delta_percentage(self, matrix_1, matrix_2):
+        matrix_sum = np.sum(np.abs(matrix_1) + np.abs(matrix_2))
+        if matrix_sum == 0:
+            return 0
+        return np.sum(np.abs(matrix_1 - matrix_2)) / matrix_sum
 
     def __compute_gaussian_probability(self, feature_vector, mean_matrix, variances_matrix):
         nstates = mean_matrix.shape[1]
@@ -98,6 +104,24 @@ class EM:
 
         return g, z
 
+    def __compute_hmm_delta_percentage(self, hmm_parameters_new, hmm_parameters_old):
+        old_initial_state_vector = hmm_parameters_old.get_initial_state_vector()
+        old_mean_matrix = hmm_parameters_old.get_mean_matrix()
+        old_transition_matrix = hmm_parameters_old.get_transition_matrix()
+        old_variance_matrix = hmm_parameters_old.get_variance_matrix()
+
+        new_initial_state_vector = hmm_parameters_new.get_initial_state_vector()
+        new_mean_matrix = hmm_parameters_new.get_mean_matrix()
+        new_transition_matrix = hmm_parameters_new.get_transition_matrix()
+        new_variance_matrix = hmm_parameters_new.get_variance_matrix()
+
+        initial_state_vector_delta_percentage = self.__compute_delta_percentage(old_initial_state_vector, new_initial_state_vector)
+        mean_matrix_delta_percentage = self.__compute_delta_percentage(old_mean_matrix, new_mean_matrix)
+        transition_matrix_delta_percentage = self.__compute_delta_percentage(old_transition_matrix, new_transition_matrix)
+        variance_matrix_delta_percentage = self.__compute_delta_percentage(old_variance_matrix, new_variance_matrix)
+
+        return [initial_state_vector_delta_percentage, mean_matrix_delta_percentage, transition_matrix_delta_percentage, variance_matrix_delta_percentage]
+
     def __compute_new_hmm_parameters(self, feature_matrices, hmm_parameters):
         a_matrices = []
         b_matrices = []
@@ -105,12 +129,14 @@ class EM:
         z_matrices = []
 
         for feature_matrix in feature_matrices:
-            self.__a, self.__b = self.__compute_ab_matrix(feature_matrix, hmm_parameters)
-            self.__g, self.__z = self.__compute_gz(self.__a, self.__b, feature_matrix, hmm_parameters)
-            a_matrices.append(self.__a)
-            b_matrices.append(self.__b)
-            g_matrices.append(self.__g)
-            z_matrices.append(self.__z)
+            a, b = self.__compute_ab_matrix(feature_matrix, hmm_parameters)
+            g, z = self.__compute_gz(a, b, feature_matrix, hmm_parameters)
+            a_matrices.append(a)
+            b_matrices.append(b)
+            g_matrices.append(g)
+            z_matrices.append(z)
+
+        self.__plot_matrices(a, b, g)
         
         new_initial_state_vector = self.__compute_new_initial_state_vector(a_matrices, b_matrices)
         new_transition_matrix = self.__compute_new_state_transition_matrix(g_matrices, z_matrices)
@@ -216,13 +242,13 @@ class EM:
         variance_noise_matrix = np.random.rand(nfeatures, nstates)
 
         for i in range(0, nfeatures):
-            mean_scale = np.sqrt(variance_vector[i]) / 16.0
-            variance_scale = variance_vector[i] / 16.0
+            mean_scale = np.std(mean_vector) / 8.0
+            variance_scale = np.std(variance_vector) / 8.0
             mean_noise_matrix[i, :] = mean_scale * mean_noise_matrix[i, :]
             variance_noise_matrix[i, :] = variance_scale * variance_noise_matrix[i, :]
 
-        mean_matrix = np.add(mean_matrix, mean_noise_matrix)
-        variance_matrix = np.add(variance_matrix, variance_noise_matrix)
+        #mean_matrix = np.add(mean_matrix, mean_noise_matrix)
+        #variance_matrix = np.add(variance_matrix, variance_noise_matrix)
 
         for i in range(0, nstates - 1):
             stay_probability = 0.5
@@ -238,6 +264,33 @@ class EM:
         initial_state_vector[0] = initial_state_vector[0] + (1 - np.sum(initial_state_vector))
 
         return HMM_Parameters(nstates, initial_state_vector, transition_matrix, mean_matrix, variance_matrix)
+
+    def __plot_matrices(self, a, b, g):
+        fig, axes = plt.subplots(3, 1)
+
+        axes[0].set_title("Alpha matrix")
+        axes[0].xaxis.grid(True)
+        axes[0].yaxis.grid(True)
+        axes[0].set_xlabel("frames")
+        axes[0].set_ylabel("states")
+        axes[0].imshow(a, aspect='auto')
+
+        axes[1].set_title("Beta matrix")
+        axes[1].xaxis.grid(True)
+        axes[1].yaxis.grid(True)
+        axes[1].set_xlabel("frames")
+        axes[1].set_ylabel("states")
+        axes[1].imshow(b, aspect='auto')
+
+        axes[2].set_title("Gamma matrix")
+        axes[2].xaxis.grid(True)
+        axes[2].yaxis.grid(True)
+        axes[2].set_xlabel("frames")
+        axes[2].set_ylabel("states")
+        axes[2].imshow(g, aspect='auto')
+
+        fig.tight_layout(pad = 0)
+        plt.show()
 
     def build_hmm_from_folder(self, folder_path, nstates):
         audio_files = []
@@ -260,11 +313,18 @@ class EM:
         return self.build_hmm_from_signals(signals, fs, nstates)
 
     def build_hmm_from_feature_matrices(self, feature_matrices, nstates):
+        threshold = 0.05
+        delta = 1.0
         old_hmm_parameters = self.__initialize_hmm_parameters(nstates, feature_matrices)
+        new_hmm_parameters = None
 
-        new_hmm_parameters = self.__compute_new_hmm_parameters(feature_matrices, old_hmm_parameters)
+        #animation = animation.FuncAnimation(self.__fig, self.__update_plots, interval = self.__data_update_interval * 1000, blit = True)
+        while delta > threshold:
+            new_hmm_parameters = self.__compute_new_hmm_parameters(feature_matrices, old_hmm_parameters)
+            delta = np.max(self.__compute_hmm_delta_percentage(new_hmm_parameters, old_hmm_parameters))
+            old_hmm_parameters = new_hmm_parameters
 
-        return None
+        return new_hmm_parameters
 
     def build_hmm_from_signals(self, signals, fs, nstates):
         feature_matrices = []
@@ -287,44 +347,6 @@ class EM:
         self.__speech_segments.append(speech_segment)
 
         return self.build_hmm_from_signals(self.__speech_segments, fs, nstates)
-
-    def plot_all_matrices(self, show = True):
-        self.plot_alpha_matrix(False)
-        self.plot_beta_matrix(False)
-        self.plot_gamma_matrix(False)
-
-        if show == True:
-            plt.show()
-
-    def plot_alpha_matrix(self, show = True):
-        plt.figure()
-        plt.imshow(self.__a, aspect='auto')
-        plt.title("Alpha matrix")
-        plt.xlabel('frames')
-        plt.ylabel('states')
-        
-        if show == True:
-            plt.show()
-
-    def plot_beta_matrix(self, show = True):
-        plt.figure()
-        plt.imshow(self.__b, aspect='auto')
-        plt.title("Beta matrix")
-        plt.xlabel('frames')
-        plt.ylabel('states')
-        
-        if show == True:
-            plt.show()
-
-    def plot_gamma_matrix(self, show = True):
-        plt.figure()
-        plt.imshow(self.__g, aspect='auto')
-        plt.title("Gamma matrix")
-        plt.xlabel('frames')
-        plt.ylabel('states')
-        
-        if show == True:
-            plt.show()
 
 class HMM_Parameters:
 
