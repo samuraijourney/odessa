@@ -5,7 +5,9 @@ from threading import Thread
 import fractions
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 import sounddevice as sd
+import soundfile as sf
 import time
 
 class Speech_Sampler():
@@ -56,6 +58,11 @@ class Speech_Sampler():
         self.__callback_sleep_time = 0.025 # seconds
         self.__speech_segments = Queue()
         self.__stop_processing = False
+
+        # Quality
+        self.__play_samples = False
+        self.__save_samples = False
+        self.__save_samples_path = None
 
     def __audio_callback(self, indata, frames, time, status):
         data = indata[:, 0]
@@ -274,6 +281,13 @@ class Speech_Sampler():
     
         return n1, n2
     
+    def __get_new_filepath(self, folder_path):
+        i = 0
+        template = os.path.join(folder_path, "%d.wav")
+        while os.path.exists(template % i):
+            i = i + 1
+        return template % i
+
     def __initialize_energy_plot(self, ax, data, min_threshold_data, max_threshold_data):
         self.__energy_plot = ax
         self.__energy_plot_data = ax.plot(self.__time, data)
@@ -327,11 +341,19 @@ class Speech_Sampler():
 
             if self.__speech_segments.empty():
                 continue
-            
+
             while not self.__speech_segments.empty():
                 speech_segment = self.__speech_segments.get()
+
                 for callback in self.__callbacks:
                     callback(speech_segment)
+
+                if self.__save_samples:
+                    with sf.SoundFile(self.__get_new_filepath(self.__save_samples_path), mode='x', samplerate = self.__fs, channels = 1) as file:
+                        file.write(speech_segment)
+
+                if self.__play_samples:
+                    sd.play(speech_segment, self.__fs, blocking = True)
                 
     def __scale_plot(self, ax, data, grow_only = True):
         max_val = max(data)
@@ -437,6 +459,9 @@ class Speech_Sampler():
     def pause(self):
         self.__pause = True
 
+    def play_samples(self, play = True):
+        self.__play_samples = play
+
     def resume(self):
         if (self.__pause == True):
             self.__animation.event_source.start()
@@ -458,3 +483,12 @@ class Speech_Sampler():
         
         self.__stop_processing = True
         callback_thread.join()
+
+    def save_samples(self, path, save = True):
+        self.__save_samples = save
+
+        if save:
+            if os.path.exists(path):
+                self.__save_samples_path = path
+            else:
+                self.__save_samples = False

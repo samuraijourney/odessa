@@ -102,15 +102,19 @@ class Speech_Recognizer:
                             "   0) Pause\n"
                             "   1) No plots\n"
                             "   2) Clear data queue\n"
-                            "   3) Plot full feature matrix\n"
-                            "   4) Plot mfcc feature matrix\n"
-                            "   5) Plot delta feature matrix\n"
-                            "   6) Plot filter banks\n"
-                            "   7) Plot filter bank filtered spectra sum\n"
-                            "   8) Plot filter bank filtered spectra sum log\n"
-                            "   9) Plot filter bank filtered spectra sum log dct (mfcc)\n"
-                            "  10) Plot mfcc transitions\n"
-                            "  11) Plot speech segment\n"
+                            "   3) Start save speech segments (saves in current working directory)\n"
+                            "   4) Stop save speech segments\n"
+                            "   5) Start speech segment playback\n"
+                            "   6) Stop speech segment playback\n"
+                            "   7) Plot full feature matrix\n"
+                            "   8) Plot mfcc feature matrix\n"
+                            "   9) Plot delta feature matrix\n"
+                            "  10) Plot filter banks\n"
+                            "  11) Plot filter bank filtered spectra sum\n"
+                            "  12) Plot filter bank filtered spectra sum log\n"
+                            "  13) Plot filter bank filtered spectra sum log dct (mfcc)\n"
+                            "  14) Plot mfcc transitions\n"
+                            "  15) Plot speech segment\n"
                             "\n"
                             "To resume you have to exit the plot cause matplotlib is stupid...\n"
                         )
@@ -120,7 +124,7 @@ class Speech_Recognizer:
 
                 try: 
                     option = int(text)
-                    if option > 11:
+                    if option > 15:
                         continue
                     else:
                         invalid_selection = False
@@ -131,8 +135,16 @@ class Speech_Recognizer:
                         self.__plot_option = -1
                     elif option == 2:
                         self.__empty_speech_segment_queue()
+                    elif option == 3:
+                        self.__sampler.save_samples(os.getcwd())
+                    elif option == 4:
+                        self.__sampler.save_samples(None, False)
+                    elif option == 5:
+                        self.__sampler.play_samples(True)
+                    elif option == 6:
+                        self.__sampler.play_samples(False)
                     else:
-                        self.__plot_option = option - 3
+                        self.__plot_option = option - 7
                                    
                 except ValueError:
                     continue
