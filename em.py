@@ -49,19 +49,19 @@ class EM:
             log_sum = self.__sum_log_probabilities([log_sum, self.__sum_log_probabilities(a[:, -1])])
         return log_sum - np.log(len(a_matrices))
 
-    def __compute_gaussian_probability(self, feature_vector, mean_matrix, variances_matrix):
+    def __compute_gaussian_probability(self, feature_vector, mean_matrix, variance_matrix):
         nstates = mean_matrix.shape[1]
         feature_matrix = self.__convert_vector_to_matrix(feature_vector, nstates)
-        exponent = np.multiply(-0.5, np.sum(np.true_divide(np.square(feature_matrix - mean_matrix), variances_matrix), axis = 0))
-        denominator = np.multiply(np.power(2 * np.pi, nstates / 2), np.sqrt(np.prod(variances_matrix, axis = 0)))
+        exponent = np.multiply(-0.5, np.sum(np.true_divide(np.square(feature_matrix - mean_matrix), variance_matrix), axis = 0))
+        denominator = np.multiply(np.power(2 * np.pi, nstates / 2), np.sqrt(np.prod(variance_matrix, axis = 0)))
         return np.true_divide(np.exp(exponent), denominator)
 
-    def __compute_gaussian_probability_log(self, feature_vector, mean_matrix, variances_matrix):
+    def __compute_gaussian_probability_log(self, feature_vector, mean_matrix, variance_matrix):
         nstates = mean_matrix.shape[1]
         nfeatures = len(feature_vector)
         feature_matrix = self.__convert_vector_to_matrix(feature_vector, nstates)
-        exponent = -0.5 * np.sum(np.true_divide(np.square(feature_matrix - mean_matrix), variances_matrix), axis = 0)
-        denominator = -0.5 * nfeatures * np.log(2 * np.pi) - 0.5 * np.sum(np.log(variances_matrix), axis = 0)
+        exponent = -0.5 * np.sum(np.true_divide(np.square(feature_matrix - mean_matrix), variance_matrix), axis = 0)
+        denominator = -0.5 * nfeatures * np.log(2 * np.pi) - 0.5 * np.sum(np.log(variance_matrix), axis = 0)
         return exponent + denominator
 
     def __compute_gz_matrices(self, a, b, feature_matrix, hmm_parameters):
@@ -174,9 +174,9 @@ class EM:
     def __compute_new_variance_matrix(self, feature_matrices, new_mean_matrix, g_matrices):
         nstates = g_matrices[0].shape[0]
         nfeatures = feature_matrices[0].shape[0]
-        variance_matrix = np.full((nfeatures, nstates), self.__log_zero, dtype = np.float)
-        numerator = np.full(nfeatures, self.__log_zero)
-        denominator = self.__log_zero
+        variance_matrix = np.zeros((nfeatures, nstates), dtype = np.float)
+        numerator = np.zeros(nfeatures)
+        denominator = 0
 
         for q in range(0, nstates):
             for i in range(0, len(feature_matrices)):
@@ -219,8 +219,8 @@ class EM:
         for j in range(0, nstates):
             mean_variance = np.var(mean_matrix[:, j])
             for i in range(0, nfeatures):
-                mean_matrix[i, j] = mean_matrix[i, j] + np.random.normal(0, np.sqrt(mean_variance) / 10.0, 1)
-                variance_matrix[i, j] = variance_matrix[i, j] + np.random.normal(0, np.sqrt(variance_matrix[i, j]) / 10.0, 1)
+                mean_matrix[i, j] = mean_matrix[i, j] + np.random.normal(0, np.sqrt(mean_variance), 1)
+                variance_matrix[i, j] = variance_matrix[i, j] + np.random.normal(0, np.sqrt(variance_matrix[i, j]), 1)
 
         for i in range(0, nstates - 1):
             stay_probability = 0.5
