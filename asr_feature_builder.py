@@ -81,6 +81,8 @@ class ASR_Feature_Builder:
                     self.__delta_features_matrix[i, j] = self.__delta_features_matrix[i, j] + k * mfcc_matrix[i, j + k]
             self.__delta_features_matrix[i, j] = self.__delta_features_matrix[i, j] / float(divisor)
         
+        self.__delta_features_matrix = self.__delta_features_matrix[:, radius : -radius]
+
         return self.__delta_features_matrix
 
     def compute_features(self, filepath, nfilters, window_duration, skip_duration, radius, nfilters_to_keep):
@@ -93,7 +95,7 @@ class ASR_Feature_Builder:
 
         mfcc_matrix = self.__mfcc_features_matrix[range(0, nfilters_to_keep), :]
         delta_features_matrix = self.__delta_features_matrix[range(0, nfilters_to_keep), :]
-        self.__features_matrix = np.concatenate((mfcc_matrix, delta_features_matrix), axis = 0)
+        self.__features_matrix = np.concatenate((mfcc_matrix[:, radius : -radius], delta_features_matrix), axis = 0)
 
         return self.__features_matrix
 
