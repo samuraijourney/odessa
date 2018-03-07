@@ -8,6 +8,8 @@ class EM:
 
     def __init__(self):
 
+        self.__log_zero = -10e30
+
         # Feature builder
         self.__feature_window_duration = 0.025 # seconds
         self.__feature_skip_duration = 0.01 # seconds
@@ -19,52 +21,32 @@ class EM:
         # Continuous builder
         self.__speech_segments = []
 
-    def __compute_ab_matrix(self, feature_matrix, hmm_parameters):
+    def __compute_ab_matrices(self, feature_matrix, hmm_parameters):
         mean_matrix = hmm_parameters.get_mean_matrix()
         nstates = hmm_parameters.get_nstates()
         transition_matrix = hmm_parameters.get_transition_matrix()
         variance_matrix = hmm_parameters.get_variance_matrix()
 
-        a = np.zeros((nstates, feature_matrix.shape[1]))
-        b = np.zeros(a.shape)
+        a = np.full((nstates, feature_matrix.shape[1]), self.__log_zero)
+        b = np.full(a.shape, self.__log_zero)
 
-        a[0, 0] = 1#hmm_parameters.get_initial_state_vector()
-        b[-1, -1] = 1
+        a[0, 0] = np.log(1)#hmm_parameters.get_initial_state_vector()
+        b[-1, -1] = np.log(1)
 
         for t in range(1, a.shape[1]):
-
-            a[:, t] = np.multiply( \
-                np.dot( \
-                    np.transpose(transition_matrix), \
-                    a[:, t - 1] \
-                ), \
-                self.__compute_gaussian_probability(feature_matrix[:, t], mean_matrix, variance_matrix) \
-            )
-
-            b[:, -t - 1] = np.multiply(
-                np.dot( \
-                    transition_matrix, \
-                    b[:, -t] \
-                ), \
-                self.__compute_gaussian_probability(feature_matrix[:, -t], mean_matrix, variance_matrix) \
-            )
-
-            a_sum = np.sum(a[:, t])
-            b_sum = np.sum(b[:, -t - 1])
-
-            if a_sum != 0:
-                a[:, t] = np.true_divide(a[:, t], a_sum)
-            
-            if b_sum != 0:
-                b[:, -t - 1] = np.true_divide(b[:, -t - 1], b_sum)
+            p_a = self.__compute_gaussian_probability_log(feature_matrix[:, t], mean_matrix, variance_matrix)
+            p_b = self.__compute_gaussian_probability_log(feature_matrix[:, -t], mean_matrix, variance_matrix)
+            for j in range(0, nstates):
+                a[j, t] = self.__sum_log_probabilities(a[:, t - 1] + transition_matrix[:, j]) + p_a[j]
+                b[j, -t - 1] = self.__sum_log_probabilities(b[:, -t] + transition_matrix[j, :] + p_b)
 
         return a, b
 
-    def __compute_delta_percentage(self, matrix_1, matrix_2):
-        matrix_sum = np.sum(np.abs(matrix_1) + np.abs(matrix_2))
-        if matrix_sum == 0:
-            return 0
-        return np.sum(np.abs(matrix_1 - matrix_2)) / matrix_sum
+    def __compute_data_log_likelihood(self, a_matrices):
+        log_sum = self.__log_zero
+        for a in a_matrices:
+            log_sum = self.__sum_log_probabilities([log_sum, self.__sum_log_probabilities(a[:, -1])])
+        return log_sum - np.log(len(a_matrices))
 
     def __compute_gaussian_probability(self, feature_vector, mean_matrix, variances_matrix):
         nstates = mean_matrix.shape[1]
@@ -73,54 +55,36 @@ class EM:
         denominator = np.multiply(np.power(2 * np.pi, nstates / 2), np.sqrt(np.prod(variances_matrix, axis = 0)))
         return np.true_divide(np.exp(exponent), denominator)
 
-    def __compute_gz(self, a, b, feature_matrix, hmm_parameters):
+    def __compute_gaussian_probability_log(self, feature_vector, mean_matrix, variances_matrix):
+        nstates = mean_matrix.shape[1]
+        nfeatures = len(feature_vector)
+        feature_matrix = self.__convert_vector_to_matrix(feature_vector, nstates)
+        exponent = -0.5 * np.sum(np.true_divide(np.square(feature_matrix - mean_matrix), variances_matrix), axis = 0)
+        denominator = -0.5 * nfeatures * np.log(2 * np.pi) - 0.5 * np.sum(np.log(variances_matrix), axis = 0)
+        return exponent + denominator
+
+    def __compute_gz_matrices(self, a, b, feature_matrix, hmm_parameters):
         mean_matrix = hmm_parameters.get_mean_matrix()
         transition_matrix = hmm_parameters.get_transition_matrix()
         variance_matrix = hmm_parameters.get_variance_matrix()
         nstates = a.shape[0]
         nframes = a.shape[1]
 
-        g = np.zeros(a.shape)
-        z = np.zeros((nstates, nstates, nframes))
+        g = np.full(a.shape, self.__log_zero)
+        z = np.full((nstates, nstates, nframes), self.__log_zero)
 
-        ab = np.multiply(a[:, 0], b[:, 0])
-        ab_sum = np.sum(ab)
-
-        if ab_sum != 0:
-            g[:, 0] = np.true_divide(ab, ab_sum)
+        g[:, 0] = a[:, 0] + b[:, 0] - self.__sum_log_probabilities(self.__sum_log_probability_vectors(a[:, 0], b[:, 0]))
 
         for t in range(1, nframes):
-            ab = np.multiply(a[:, t], b[:, t])
-            ab_sum = np.sum(ab)
+            g[:, t] = a[:, t] + b[:, t] - self.__sum_log_probabilities(self.__sum_log_probability_vectors(a[:, t], b[:, t]))
 
-            if ab_sum != 0:
-                g[:, t] = np.true_divide(ab, ab_sum)
-
-            p = self.__compute_gaussian_probability(feature_matrix[:, t], mean_matrix, variance_matrix)
+            p = self.__compute_gaussian_probability_log(feature_matrix[:, t], mean_matrix, variance_matrix)
 
             for q2 in range(0, nstates):
                 for q1 in range(0, nstates):
-                    z[q1, q2, t] = b[q2, t] * a[q1, t - 1] * transition_matrix[q1, q2] * p[q2]
+                    z[q1, q2, t] = b[q2, t] + a[q1, t - 1] + transition_matrix[q1, q2] + p[q2]
 
         return g, z
-
-    def __compute_hmm_delta_percentage(self, hmm_parameters_new, hmm_parameters_old):
-        old_initial_state_vector = hmm_parameters_old.get_initial_state_vector()
-        old_mean_matrix = hmm_parameters_old.get_mean_matrix()
-        old_transition_matrix = hmm_parameters_old.get_transition_matrix()
-        old_variance_matrix = hmm_parameters_old.get_variance_matrix()
-
-        new_initial_state_vector = hmm_parameters_new.get_initial_state_vector()
-        new_mean_matrix = hmm_parameters_new.get_mean_matrix()
-        new_transition_matrix = hmm_parameters_new.get_transition_matrix()
-        new_variance_matrix = hmm_parameters_new.get_variance_matrix()
-
-        initial_state_vector_delta_percentage = self.__compute_delta_percentage(old_initial_state_vector, new_initial_state_vector)
-        mean_matrix_delta_percentage = self.__compute_delta_percentage(old_mean_matrix, new_mean_matrix)
-        transition_matrix_delta_percentage = self.__compute_delta_percentage(old_transition_matrix, new_transition_matrix)
-        variance_matrix_delta_percentage = self.__compute_delta_percentage(old_variance_matrix, new_variance_matrix)
-
-        return [initial_state_vector_delta_percentage, mean_matrix_delta_percentage, transition_matrix_delta_percentage, variance_matrix_delta_percentage]
 
     def __compute_new_hmm_parameters(self, feature_matrices, hmm_parameters):
         a_matrices = []
@@ -129,36 +93,36 @@ class EM:
         z_matrices = []
 
         for feature_matrix in feature_matrices:
-            a, b = self.__compute_ab_matrix(feature_matrix, hmm_parameters)
-            g, z = self.__compute_gz(a, b, feature_matrix, hmm_parameters)
+            a, b = self.__compute_ab_matrices(feature_matrix, hmm_parameters)
+            g, z = self.__compute_gz_matrices(a, b, feature_matrix, hmm_parameters)
             a_matrices.append(a)
             b_matrices.append(b)
             g_matrices.append(g)
             z_matrices.append(z)
 
-        self.__plot_matrices(a, b, g)
+        self.__plot_matrices(a, b, g, self.__sum_log_probability_matrix(a + b))
         
         new_initial_state_vector = self.__compute_new_initial_state_vector(a_matrices, b_matrices)
         new_transition_matrix = self.__compute_new_state_transition_matrix(g_matrices, z_matrices)
         new_mean_matrix = self.__compute_new_mean_matrix(feature_matrices, g_matrices)
         new_variance_matrix = self.__compute_new_variance_matrix(feature_matrices, new_mean_matrix, g_matrices)
+        data_log_likelihood = self.__compute_data_log_likelihood(a_matrices)
         
-        return HMM_Parameters(hmm_parameters.get_nstates(), new_initial_state_vector, new_transition_matrix, new_mean_matrix, new_variance_matrix)
+        return HMM_Parameters(hmm_parameters.get_nstates(), new_initial_state_vector, new_transition_matrix, new_mean_matrix, new_variance_matrix, data_log_likelihood)
 
     def __compute_new_initial_state_vector(self, a_matrices, b_matrices):
         nstates = a_matrices[0].shape[0]
-        initial_state_vector = np.zeros(nstates)
+        nmatrices = len(a_matrices)
+        results = np.full((nmatrices, nstates), self.__log_zero)
+        initial_state_vector = np.full(nstates, self.__log_zero)
 
         for i in range(0, len(a_matrices)):
             a = a_matrices[i]
             b = b_matrices[i]
-            ab = np.multiply(a[:, 1], b[:, 1])
-            ab_sum = np.sum(ab)
-            if ab_sum != 0:
-                initial_state_vector = initial_state_vector + np.true_divide(ab, ab_sum)
+            results[i, :] = a[:, 0] + b[:, 0] - self.__sum_log_probabilities(a[:, 0] + b[:, 0])
+        initial_state_vector = self.__sum_log_probability_matrix(results)
         
-        initial_state_vector = np.true_divide(initial_state_vector, len(a_matrices))
-        return np.true_divide(initial_state_vector, np.sum(initial_state_vector))
+        return initial_state_vector - np.log(nmatrices)
 
     def __compute_new_mean_matrix(self, feature_matrices, g_matrices):
         nstates = g_matrices[0].shape[0]
@@ -171,34 +135,42 @@ class EM:
             for i in range(0, len(feature_matrices)):
                 feature_matrix = feature_matrices[i]
                 g = g_matrices[i]
-                numerator = numerator + np.sum(np.multiply(feature_matrix, g[q, :]), axis = 1)
-                denominator = denominator + np.sum(g[q, :])
+                numerator = numerator + np.sum(np.multiply(feature_matrix, np.exp(g[q, :])), axis = 1)
+                denominator = denominator + np.sum(np.exp(g[q, :]))
             mean_matrix[:, q] = numerator / float(denominator)
         
         return mean_matrix
 
     def __compute_new_state_transition_matrix(self, g_matrices, z_matrices):
         nstates = g_matrices[0].shape[0]
-        transition_matrix = np.zeros((nstates, nstates), dtype = np.float)
-        numerator = np.zeros((nstates, nstates))
-        denominator = np.zeros(nstates)
+        nmatrices = len(g_matrices)
+        numerator = np.full((nstates, nstates, nmatrices), self.__log_zero)
+        denominator = np.full((nstates, nmatrices), self.__log_zero)
 
-        for i in range(0, len(g_matrices)):
-            g = g_matrices[i]
-            z = z_matrices[i]
-            numerator = numerator + np.sum(z[:, :, 2:], axis = 2)
-            denominator = denominator + np.sum(g[:, 2:], axis = 1)
-        transition_matrix = np.true_divide(numerator, denominator)
-        transition_matrix = np.transpose(np.true_divide(np.transpose(transition_matrix), np.sum(transition_matrix, axis = 1)))
+        for k in range(0, len(g_matrices)):
+            g = g_matrices[k]
+            z = z_matrices[k]
+            for i in range(0, nstates):
+                denominator[i, k] = self.__sum_log_probabilities(g[i, 1:])
+                for j in range(0, nstates):
+                    numerator[i, j, k] = self.__sum_log_probabilities(z[i, j, 1:])
 
-        return transition_matrix
+        numerator2 = np.full((nstates, nstates), self.__log_zero)
+        denominator2 = np.full(nstates, self.__log_zero)
+
+        for i in range(0, nstates):
+            denominator2[i] = self.__sum_log_probabilities(denominator[i, :])
+            for j in range(0, nstates):
+                numerator2[i, j] = self.__sum_log_probabilities(numerator[i, j, :])
+
+        return numerator2 - denominator2.reshape((len(denominator2), 1))
 
     def __compute_new_variance_matrix(self, feature_matrices, new_mean_matrix, g_matrices):
         nstates = g_matrices[0].shape[0]
         nfeatures = feature_matrices[0].shape[0]
-        variance_matrix = np.zeros((nfeatures, nstates), dtype = np.float)
-        numerator = np.zeros(nfeatures)
-        denominator = 0.0
+        variance_matrix = np.full((nfeatures, nstates), self.__log_zero, dtype = np.float)
+        numerator = np.full(nfeatures, self.__log_zero)
+        denominator = self.__log_zero
 
         for q in range(0, nstates):
             for i in range(0, len(feature_matrices)):
@@ -209,11 +181,11 @@ class EM:
                         np.square( \
                             feature_matrix - new_mean_matrix[:, q].reshape((nfeatures, 1)) \
                         ), \
-                        g[q, :] \
+                        np.exp(g[q, :]) \
                     ), \
                     axis = 1 \
                 )
-                denominator = denominator + np.sum(g[q, :])
+                denominator = denominator + np.sum(np.exp(g[q, :]))
             variance_matrix[:, q] = numerator / float(denominator)
         
         return variance_matrix
@@ -226,10 +198,10 @@ class EM:
         initial_state_vector = np.zeros(nstates, dtype = np.float)
         variance_vector = np.zeros(nfeatures, dtype = np.float)
         mean_vector = np.zeros(nfeatures, dtype = np.float)
-        transition_matrix = np.zeros((nstates, nstates), dtype = np.float)
+        transition_matrix = np.full((nstates, nstates), self.__log_zero, dtype = np.float)
 
         for feature_matrix in feature_matrices:
-            variance_vector = np.add(variance_vector, np.square(np.std(feature_matrix, axis = 1)))
+            variance_vector = np.add(variance_vector, np.var(feature_matrix, axis = 1))
             mean_vector = np.add(mean_vector, np.mean(feature_matrix, axis = 1))    
 
         variance_vector = np.true_divide(variance_vector, len(feature_matrices))
@@ -238,59 +210,78 @@ class EM:
         variance_matrix = self.__convert_vector_to_matrix(variance_vector, nstates)
         mean_matrix = self.__convert_vector_to_matrix(mean_vector, nstates)
 
-        mean_noise_matrix = np.random.rand(nfeatures, nstates)
-        variance_noise_matrix = np.random.rand(nfeatures, nstates)
-
-        for i in range(0, nfeatures):
-            mean_scale = np.std(mean_vector) / 8.0
-            variance_scale = np.std(variance_vector) / 8.0
-            mean_noise_matrix[i, :] = mean_scale * mean_noise_matrix[i, :]
-            variance_noise_matrix[i, :] = variance_scale * variance_noise_matrix[i, :]
-
-        #mean_matrix = np.add(mean_matrix, mean_noise_matrix)
-        #variance_matrix = np.add(variance_matrix, variance_noise_matrix)
+        #for j in range(0, nstates):
+        #    mean_variance = np.var(mean_matrix[:, j])
+        #    for i in range(0, nfeatures):
+        #        mean_matrix[i, j] = mean_matrix[i, j] + np.random.normal(0, np.sqrt(mean_variance) / 10.0, 1)
+        #        variance_matrix[i, j] = variance_matrix[i, j] + np.random.normal(0, np.sqrt(variance_matrix[i, j]) / 10.0, 1)
 
         for i in range(0, nstates - 1):
             stay_probability = 0.5
             transition_probability = 1 - stay_probability
-            transition_matrix[i, i] = stay_probability
-            transition_matrix[i, i + 1] = transition_probability
+            transition_matrix[i, i] = np.log(stay_probability)
+            transition_matrix[i, i + 1] = np.log(transition_probability)
 
         # At the end the probability of staying is 100% since it is the end of the HMM
-        transition_matrix[-1, -1] = 1 
+        transition_matrix[-1, -1] = np.log(1)
 
         for i in range(0, nstates):
             initial_state_vector[i] = np.power(0.5, (i + 1) ** 2)     
         initial_state_vector[0] = initial_state_vector[0] + (1 - np.sum(initial_state_vector))
+        initial_state_vector = np.log(initial_state_vector)
 
-        return HMM_Parameters(nstates, initial_state_vector, transition_matrix, mean_matrix, variance_matrix)
+        return HMM_Parameters(nstates, initial_state_vector, transition_matrix, mean_matrix, variance_matrix, self.__log_zero)
 
-    def __plot_matrices(self, a, b, g):
-        fig, axes = plt.subplots(3, 1)
+    def __plot_matrices(self, a, b, g, ab_product_sum):
+        fig, axes = plt.subplots(4, 1)
 
         axes[0].set_title("Alpha matrix")
         axes[0].xaxis.grid(True)
         axes[0].yaxis.grid(True)
         axes[0].set_xlabel("frames")
-        axes[0].set_ylabel("states")
         axes[0].imshow(a, aspect='auto')
+        axes[0].grid(linewidth = 3)
 
         axes[1].set_title("Beta matrix")
         axes[1].xaxis.grid(True)
         axes[1].yaxis.grid(True)
         axes[1].set_xlabel("frames")
-        axes[1].set_ylabel("states")
         axes[1].imshow(b, aspect='auto')
-
+        axes[1].grid(linewidth = 3)
+        
         axes[2].set_title("Gamma matrix")
         axes[2].xaxis.grid(True)
         axes[2].yaxis.grid(True)
         axes[2].set_xlabel("frames")
-        axes[2].set_ylabel("states")
         axes[2].imshow(g, aspect='auto')
+        axes[2].grid(linewidth = 3)
 
-        fig.tight_layout(pad = 0)
+        axes[3].set_title("Alpha/Beta sum matrix")
+        axes[3].xaxis.grid(True)
+        axes[3].yaxis.grid(True)
+        axes[3].set_xlabel("frames")
+        axes[3].imshow([ab_product_sum], aspect='auto')
+        axes[3].grid(linewidth = 3)
+        
+        fig.tight_layout(pad = 1)
         plt.show()
+
+    def __sum_log_probabilities(self, p):
+        a = -np.sort(-np.array(p))
+        return a[0] + np.log(1 + np.sum(np.exp(a[1:] - a[0])))
+
+    def __sum_log_probability_vectors(self, p1, p2):
+        results = np.full(len(p1), self.__log_zero)
+        for i in range(0, len(p1)):
+            results[i] = self.__sum_log_probabilities([p1[i], p2[i]])
+        return results
+
+    def __sum_log_probability_matrix(self, m):
+        width = m.shape[1]
+        results = np.full(width, self.__log_zero)
+        for i in range(0, m.shape[1]):
+            results[i] = self.__sum_log_probabilities(m[:, i])
+        return results
 
     def build_hmm_from_folder(self, folder_path, nstates):
         audio_files = []
@@ -316,12 +307,10 @@ class EM:
         threshold = 0.05
         delta = 1.0
         old_hmm_parameters = self.__initialize_hmm_parameters(nstates, feature_matrices)
-        new_hmm_parameters = None
 
-        #animation = animation.FuncAnimation(self.__fig, self.__update_plots, interval = self.__data_update_interval * 1000, blit = True)
         while delta > threshold:
             new_hmm_parameters = self.__compute_new_hmm_parameters(feature_matrices, old_hmm_parameters)
-            delta = np.max(self.__compute_hmm_delta_percentage(new_hmm_parameters, old_hmm_parameters))
+            delta = new_hmm_parameters.get_data_log_likelihood() - old_hmm_parameters.get_data_log_likelihood()
             old_hmm_parameters = new_hmm_parameters
 
         return new_hmm_parameters
@@ -350,12 +339,16 @@ class EM:
 
 class HMM_Parameters:
 
-    def __init__(self, nstates, initial_state_vector, transition_matrix, mean_matrix, variance_matrix):
+    def __init__(self, nstates, initial_state_vector, transition_matrix, mean_matrix, variance_matrix, data_log_likelihood):
+        self.__data_log_likelihood = data_log_likelihood
         self.__initial_state_vector = initial_state_vector
         self.__mean_matrix = mean_matrix
         self.__nstates = nstates
         self.__transition_matrix = transition_matrix
         self.__variance_matrix = variance_matrix
+
+    def get_data_log_likelihood(self):
+        return self.__data_log_likelihood
 
     def get_initial_state_vector(self):
         return self.__initial_state_vector
