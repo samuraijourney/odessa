@@ -155,7 +155,7 @@ class Speech_Recognizer:
         while not self.__stop_processing:
             time.sleep(self.__process_sleep_time)
             speech_segment = self.__get_speech_segment()
-            if speech_segment == None:
+            if speech_segment is None:
                 continue
             
             self.__feature_builder.compute_features_for_signal( \

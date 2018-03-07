@@ -165,17 +165,33 @@ class Speech_Sampler():
 
         # Initialize all plots
         if (not self.__hide_signal_plot):
-            self.__initialize_signal_plot(axes[plot_index], self.__data[:], self.__speech_detections[:])
+            if isinstance(axes, np.ndarray) == True:
+                ax = axes[plot_index]
+            else:
+                ax = axes
+            self.__initialize_signal_plot(ax, self.__data[:], self.__speech_detections[:])
             plot_index = plot_index + 1
         if (not self.__hide_energy_plot):
-            self.__initialize_energy_plot(axes[plot_index], self.__energies[:], self.__energies_min_thresholds[:], self.__energies_max_thresholds[:])
+            if isinstance(axes, np.ndarray) == True:
+                ax = axes[plot_index]
+            else:
+                ax = axes
+            self.__initialize_energy_plot(ax, self.__energies[:], self.__energies_min_thresholds[:], self.__energies_max_thresholds[:])
             plot_index = plot_index + 1
         if (not self.__hide_zero_crossing_plot):
-            self.__initialize_zero_crossings_plot(axes[plot_index], self.__zero_crossings[:])
+            if isinstance(axes, np.ndarray) == True:
+                ax = axes[plot_index]
+            else:
+                ax = axes
+            self.__initialize_zero_crossings_plot(ax, self.__zero_crossings[:])
             plot_index = plot_index + 1
         if (not self.__hide_spectrogram_plot):
-            self.__initialize_spectrogram_plot(axes[plot_index], self.__data[:])
-            axes[plot_index].axis('off')
+            if isinstance(axes, np.ndarray) == True:
+                ax = axes[plot_index]
+            else:
+                ax = axes
+            self.__initialize_spectrogram_plot(ax, self.__data[:])
+            ax.axis('off')
 
         self.__fig.tight_layout(pad = 0)
 
@@ -290,9 +306,9 @@ class Speech_Sampler():
 
     def __initialize_energy_plot(self, ax, data, min_threshold_data, max_threshold_data):
         self.__energy_plot = ax
-        self.__energy_plot_data = ax.plot(self.__time, data)
-        self.__energy_plot_max_data = ax.plot(self.__time, max_threshold_data, color='g')
-        self.__energy_plot_min_data = ax.plot(self.__time, min_threshold_data, color='r')
+        self.__energy_plot_data, = ax.plot(self.__time, data)
+        self.__energy_plot_max_data, = ax.plot(self.__time, max_threshold_data, color='g')
+        self.__energy_plot_min_data, = ax.plot(self.__time, min_threshold_data, color='r')
 
         ax.axis((0, len(data), 0, 1))
         ax.set_title("Energy")
@@ -304,8 +320,8 @@ class Speech_Sampler():
 
     def __initialize_signal_plot(self, ax, signal_data, speech_detect_data):        
         self.__signal_plot = ax
-        self.__signal_plot_data = ax.plot(self.__time, signal_data)
-        self.__signal_plot_speech_detect_data = ax.plot(self.__time, speech_detect_data, color='r')
+        self.__signal_plot_data, = ax.plot(self.__time, signal_data)
+        self.__signal_plot_speech_detect_data, = ax.plot(self.__time, speech_detect_data, color='r')
         self.__garbage_plot_data = ax.plot(self.__time, np.full(len(signal_data), np.nan))
 
         ax.set_title("Audio")
@@ -320,12 +336,12 @@ class Speech_Sampler():
         self.__spectrogram_plot = ax
 
         ax.set_title("Spectrogram")
-        ax.specgram(data, NFFT = 1024, Fs = self.__fs, noverlap = 900)
+        _,_,_,self.__spectrogram_plot_data = ax.specgram(data, NFFT = 1024, Fs = self.__fs, noverlap = 900)
 
     def __initialize_zero_crossings_plot(self, ax, data):
         self.__zero_crossings_plot = ax
-        self.__zero_crossings_plot_data = ax.plot(self.__time, data)
-        self.__zero_crossings_plot_threshold_data = ax.plot(self.__time, np.full(len(data), self.__zero_crossings_threshold), color='r')
+        self.__zero_crossings_plot_data, = ax.plot(self.__time, data)
+        self.__zero_crossings_plot_threshold_data, = ax.plot(self.__time, np.full(len(data), self.__zero_crossings_threshold), color='r')
 
         ax.axis((0, len(data), 0, 0.1))
         ax.set_title("Zero Crossings")
@@ -377,35 +393,39 @@ class Speech_Sampler():
         self.__scale_plot(self.__energy_plot, min_threshold_data, True)
         self.__scale_plot(self.__energy_plot, max_threshold_data, True)
 
-        for _,line in enumerate(self.__energy_plot_data):
-            line.set_ydata(data)
-        for _,line in enumerate(self.__energy_plot_max_data):
-            line.set_ydata(max_threshold_data)
-        for _,line in enumerate(self.__energy_plot_min_data):
-            line.set_ydata(min_threshold_data)
+        self.__energy_plot_data.set_ydata(data)
+        self.__energy_plot_max_data.set_ydata(max_threshold_data)
+        self.__energy_plot_min_data.set_ydata(min_threshold_data)
 
     def __update_plots(self, frame):
         if self.__force_draw == True:
             self.__animation.event_source.stop()
 
+        plot_data = []
+
         if ((not self.__hide_signal_plot) and (((time.time() - self.__last_updated_signal_time) > self.__signal_plot_refresh_interval) or self.__force_draw)):
             self.__update_signal_plot(self.__data[:], self.__speech_detections[:])
             self.__last_updated_signal_time = time.time()
+            plot_data.append(self.__signal_plot_data)
+            plot_data.append(self.__signal_plot_speech_detect_data)
 
         if ((not self.__hide_energy_plot) and (((time.time() - self.__last_updated_energy_time) > self.__energy_plot_refresh_interval) or self.__force_draw)):
             self.__update_energy_plot(self.__energies[:], self.__energies_min_thresholds[:], self.__energies_max_thresholds[:])
             self.__last_updated_energy_time = time.time()
+            plot_data.append(self.__energy_plot_data)
+            plot_data.append(self.__energy_plot_max_data)
+            plot_data.append(self.__energy_plot_min_data)
 
         if ((not self.__hide_zero_crossing_plot) and (((time.time() - self.__last_updated_zero_crossings_time) > self.__zero_crossings_plot_refresh_interval) or self.__force_draw)):
             self.__update_zero_crossings_plot(self.__zero_crossings[:])
             self.__last_updated_zero_crossings_time = time.time()
+            plot_data.append(self.__zero_crossings_plot_data)
+            plot_data.append(self.__zero_crossings_plot_threshold_data)
 
         if ((not self.__hide_spectrogram_plot) and (((time.time() - self.__last_updated_spectrogram_time) > self.__spectrogram_plot_refresh_interval) or self.__force_draw)):
             self.__update_spectrogram_plot(self.__data[:])
             self.__last_updated_spectrogram_time = time.time()
-
-        if (not self.__pause) or self.__force_draw:
-            plt.pause(0.01)
+            plot_data.append(self.__spectrogram_plot_data)
 
         if (self.__force_draw == True):
             self.__force_draw = False
@@ -415,18 +435,16 @@ class Speech_Sampler():
 
         self.__last_pause_state = self.__pause
 
-        return self.__garbage_plot_data
+        return plot_data
 
     def __update_signal_plot(self, signal_data, detect_data):
         self.__scale_plot(self.__signal_plot, signal_data, False)
-        for _,line in enumerate(self.__signal_plot_data):
-            line.set_ydata(signal_data)
-        for _,line in enumerate(self.__signal_plot_speech_detect_data):
-            line.set_ydata(detect_data)
+        self.__signal_plot_data.set_ydata(signal_data)
+        self.__signal_plot_speech_detect_data.set_ydata(detect_data)
 
     def __update_spectrogram_plot(self, data):
         self.__spectrogram_plot.clear()
-        self.__spectrogram_plot.specgram(data, NFFT = 1024, Fs = self.__fs, noverlap = 900)
+        _,_,_,self.__spectrogram_plot_data = self.__spectrogram_plot.specgram(data, NFFT = 1024, Fs = self.__fs, noverlap = 900)
         self.__spectrogram_plot.tick_params(bottom='off', top='off', labelbottom='off', right='off', left='on', labelleft='on')
         self.__spectrogram_plot.set_title("Spectrogram")
 
@@ -436,10 +454,8 @@ class Speech_Sampler():
         self.__scale_plot(self.__zero_crossings_plot, data, False)
         self.__scale_plot(self.__zero_crossings_plot, threshold_data, True)
 
-        for _,line in enumerate(self.__zero_crossings_plot_data):
-            line.set_ydata(data)
-        for _,line in enumerate(self.__zero_crossings_plot_threshold_data):
-            line.set_ydata(threshold_data)
+        self.__zero_crossings_plot_data.set_ydata(data)
+        self.__zero_crossings_plot_threshold_data.set_ydata(threshold_data)
 
     def add_sample_callback(self, callback):
         self.__callbacks.append(callback)
@@ -477,7 +493,7 @@ class Speech_Sampler():
                 self.__create_plots()
 
                 # Need reference to animation otherwise garbage collector removes it...
-                self.__animation = animation.FuncAnimation(self.__fig, self.__update_plots, interval = self.__data_update_interval * 1000, blit = True)
+                self.__animation = animation.FuncAnimation(self.__fig, self.__update_plots, interval = self.__data_update_interval * 1000, blit = True, repeat = False)
                 plt.show()
                 self.__pause = False
         
