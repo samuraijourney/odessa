@@ -30,7 +30,8 @@ class EM:
         a = np.full((nstates, feature_matrix.shape[1]), self.__log_zero)
         b = np.full(a.shape, self.__log_zero)
 
-        a[0, 0] = np.log(1)#hmm_parameters.get_initial_state_vector()
+        #a[:, 0] = hmm_parameters.get_initial_state_vector()
+        a[0, 0] = 1
         b[-1, -1] = np.log(1)
 
         for t in range(1, a.shape[1]):
@@ -73,10 +74,10 @@ class EM:
         g = np.full(a.shape, self.__log_zero)
         z = np.full((nstates, nstates, nframes), self.__log_zero)
 
-        g[:, 0] = a[:, 0] + b[:, 0] - self.__sum_log_probabilities(self.__sum_log_probability_vectors(a[:, 0], b[:, 0]))
+        g[:, 0] = a[:, 0] + b[:, 0] - self.__sum_log_probabilities(a[:, 0] + b[:, 0])
 
         for t in range(1, nframes):
-            g[:, t] = a[:, t] + b[:, t] - self.__sum_log_probabilities(self.__sum_log_probability_vectors(a[:, t], b[:, t]))
+            g[:, t] = a[:, t] + b[:, t] - self.__sum_log_probabilities(a[:, t] + b[:, t])
 
             p = self.__compute_gaussian_probability_log(feature_matrix[:, t], mean_matrix, variance_matrix)
 
@@ -100,7 +101,12 @@ class EM:
             g_matrices.append(g)
             z_matrices.append(z)
 
-        self.__plot_matrices(a, b, g, self.__sum_log_probability_matrix(a + b))
+        self.__a = a
+        self.__b = b
+        self.__g = g
+        self.__z = z
+
+        self.__plot_matrices(self.__a, self.__b, np.exp(self.__g), self.__sum_log_probability_matrix(self.__a + self.__b))
         
         new_initial_state_vector = self.__compute_new_initial_state_vector(a_matrices, b_matrices)
         new_transition_matrix = self.__compute_new_state_transition_matrix(g_matrices, z_matrices)
@@ -210,11 +216,11 @@ class EM:
         variance_matrix = self.__convert_vector_to_matrix(variance_vector, nstates)
         mean_matrix = self.__convert_vector_to_matrix(mean_vector, nstates)
 
-        #for j in range(0, nstates):
-        #    mean_variance = np.var(mean_matrix[:, j])
-        #    for i in range(0, nfeatures):
-        #        mean_matrix[i, j] = mean_matrix[i, j] + np.random.normal(0, np.sqrt(mean_variance) / 10.0, 1)
-        #        variance_matrix[i, j] = variance_matrix[i, j] + np.random.normal(0, np.sqrt(variance_matrix[i, j]) / 10.0, 1)
+        for j in range(0, nstates):
+            mean_variance = np.var(mean_matrix[:, j])
+            for i in range(0, nfeatures):
+                mean_matrix[i, j] = mean_matrix[i, j] + np.random.normal(0, np.sqrt(mean_variance) / 10.0, 1)
+                variance_matrix[i, j] = variance_matrix[i, j] + np.random.normal(0, np.sqrt(variance_matrix[i, j]) / 10.0, 1)
 
         for i in range(0, nstates - 1):
             stay_probability = 0.5
@@ -233,7 +239,7 @@ class EM:
         return HMM_Parameters(nstates, initial_state_vector, transition_matrix, mean_matrix, variance_matrix, self.__log_zero)
 
     def __plot_matrices(self, a, b, g, ab_product_sum):
-        fig, axes = plt.subplots(4, 1)
+        fig, axes = plt.subplots(5, 1)
 
         axes[0].set_title("Alpha matrix")
         axes[0].xaxis.grid(True)
@@ -256,12 +262,19 @@ class EM:
         axes[2].imshow(g, aspect='auto')
         axes[2].grid(linewidth = 3)
 
-        axes[3].set_title("Alpha/Beta sum matrix")
+        axes[3].set_title("Gamma sum vector")
         axes[3].xaxis.grid(True)
         axes[3].yaxis.grid(True)
         axes[3].set_xlabel("frames")
-        axes[3].imshow([ab_product_sum], aspect='auto')
+        axes[3].imshow([np.sum(g, axis = 0)], aspect='auto')
         axes[3].grid(linewidth = 3)
+
+        axes[4].set_title("Alpha/Beta sum vector")
+        axes[4].xaxis.grid(True)
+        axes[4].yaxis.grid(True)
+        axes[4].set_xlabel("frames")
+        axes[4].imshow([ab_product_sum], aspect='auto')
+        axes[4].grid(linewidth = 3)
         
         fig.tight_layout(pad = 1)
         plt.show()
@@ -305,13 +318,17 @@ class EM:
 
     def build_hmm_from_feature_matrices(self, feature_matrices, nstates):
         threshold = 0.05
-        delta = 1.0
         old_hmm_parameters = self.__initialize_hmm_parameters(nstates, feature_matrices)
+        delta = 1.0
 
         while delta > threshold:
             new_hmm_parameters = self.__compute_new_hmm_parameters(feature_matrices, old_hmm_parameters)
-            delta = new_hmm_parameters.get_data_log_likelihood() - old_hmm_parameters.get_data_log_likelihood()
+            old_likelihood = old_hmm_parameters.get_data_log_likelihood()
+            new_likelihood = new_hmm_parameters.get_data_log_likelihood()
+            delta = np.abs(new_likelihood - old_likelihood) / np.abs(old_likelihood)
             old_hmm_parameters = new_hmm_parameters
+
+        self.__plot_matrices(self.__a, self.__b, self.__g, self.__sum_log_probability_matrix(self.__a + self.__b))
 
         return new_hmm_parameters
 
