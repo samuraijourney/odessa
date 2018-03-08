@@ -47,10 +47,10 @@ class EM:
         return a, b
 
     def __compute_data_log_likelihood(self, a_matrices):
-        log_sum = self.__log_zero
-        for a in a_matrices:
-            log_sum = self.__sum_log_probabilities([log_sum, self.__sum_log_probabilities(a[:, -1])])
-        return log_sum - np.log(len(a_matrices))
+        p = 1
+        for i in range(0, len(a_matrices)):
+            p = p * a_matrices[i][-1, -1]
+        return p
 
     def __compute_gaussian_probability_log(self, feature_vector, mean_matrix, variance_matrix):
         nstates = mean_matrix.shape[1]
@@ -163,7 +163,10 @@ class EM:
             for j in range(0, nstates):
                 numerator2[i, j] = self.__sum_log_probabilities(numerator[i, j, :])
 
-        return numerator2 - denominator2.reshape((len(denominator2), 1))
+        transition_matrix = numerator2 - denominator2.reshape((len(denominator2), 1))
+        transition_matrix = transition_matrix - self.__sum_log_probability_matrix(np.transpose(transition_matrix)).reshape((nstates, 1))
+        
+        return transition_matrix
 
     def __compute_new_variance_matrix(self, feature_matrices, new_mean_matrix, g_matrices):
         nstates = g_matrices[0].shape[0]
@@ -258,11 +261,11 @@ class EM:
         for j in range(0, nstates):
             mean_variance = np.var(mean_matrix[:, j])
             for i in range(0, nfeatures):
-                mean_matrix[i, j] = np.abs(mean_matrix[i, j] + np.random.normal(0, np.sqrt(mean_variance) / 10.0, 1))
-                variance_matrix[i, j] = np.abs(variance_matrix[i, j] + np.random.normal(0, np.sqrt(variance_matrix[i, j]) / 10.0, 1))
+                mean_matrix[i, j] = np.abs(mean_matrix[i, j] + np.random.normal(0, np.sqrt(mean_variance), 1))
+                variance_matrix[i, j] = np.abs(variance_matrix[i, j] + np.random.normal(0, np.sqrt(variance_matrix[i, j]), 1))
 
         for i in range(0, nstates - 1):
-            stay_probability = 0.5
+            stay_probability = np.random.uniform(0, 1, 1)
             transition_probability = 1 - stay_probability
             transition_matrix[i, i] = np.log(stay_probability)
             transition_matrix[i, i + 1] = np.log(transition_probability)
@@ -305,25 +308,25 @@ class EM:
             new_likelihood = new_hmm_parameters.get_data_log_likelihood()
             delta = np.abs(new_likelihood - old_likelihood) / np.abs(old_likelihood)
             old_hmm_parameters = new_hmm_parameters
-            self.__iteration = self.__iteration + 1
 
             #raw_input("Press any key for next step")
-        self.__finished = True
+            self.__iteration = self.__iteration + 1
+
+        print("Finished!")
         result_queue.put(new_hmm_parameters)
 
     def __update_plots(self, frame):
-        if self.__finished == False:
-            self.__a_plot.set_title("Alpha matrix (iteration = %d)" % self.__iteration)
-            self.__b_plot.set_title("Beta matrix (iteration = %d)" % self.__iteration)
-            self.__g_plot.set_title("Gamma matrix (iteration = %d)" % self.__iteration)
-            self.__g_sum_plot.set_title("Gamma sum vector (iteration = %d)" % self.__iteration)
-            self.__ab_product_sum_plot.set_title("Alpha/beta sum vector (iteration = %d)" % self.__iteration)
+        self.__a_plot.set_title("Alpha matrix (iteration = %d)" % self.__iteration)
+        self.__b_plot.set_title("Beta matrix (iteration = %d)" % self.__iteration)
+        self.__g_plot.set_title("Gamma matrix (iteration = %d)" % self.__iteration)
+        self.__g_sum_plot.set_title("Gamma sum vector (iteration = %d)" % self.__iteration)
+        self.__ab_product_sum_plot.set_title("Alpha/beta sum vector (iteration = %d)" % self.__iteration)
 
-            self.__a_plot.imshow(self.__a, aspect='auto')
-            self.__b_plot.imshow(self.__b, aspect='auto')
-            self.__g_plot.imshow(self.__g, aspect='auto')
-            self.__g_sum_plot.imshow([np.sum(np.exp(self.__g), axis = 0)], aspect='auto')
-            self.__ab_product_sum_plot.imshow([self.__sum_log_probability_matrix(self.__a + self.__b)], aspect='auto')
+        self.__a_plot.imshow(self.__a, aspect='auto')
+        self.__b_plot.imshow(self.__b, aspect='auto')
+        self.__g_plot.imshow(np.exp(self.__g), aspect='auto')
+        self.__g_sum_plot.imshow([np.sum(np.exp(self.__g), axis = 0)], aspect='auto')
+        self.__ab_product_sum_plot.imshow([self.__sum_log_probability_matrix(self.__a + self.__b)], aspect='auto')
 
         return None
 
@@ -352,7 +355,6 @@ class EM:
         self.__b = np.full(self.__a.shape, self.__log_zero)
         self.__g = np.full(self.__a.shape, self.__log_zero)
         self.__iteration = 0
-        self.__finished = False
 
         self.__create_plots()
         self.__animation = animation.FuncAnimation(self.__fig, self.__update_plots, interval = 1000, blit = False, repeat = False)
