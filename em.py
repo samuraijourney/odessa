@@ -1,7 +1,10 @@
 from asr_feature_builder import ASR_Feature_Builder
+from matplotlib import animation
+from threading import Thread
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+import Queue
 import scipy.io.wavfile as wavfile
 
 class EM:
@@ -49,13 +52,6 @@ class EM:
             log_sum = self.__sum_log_probabilities([log_sum, self.__sum_log_probabilities(a[:, -1])])
         return log_sum - np.log(len(a_matrices))
 
-    def __compute_gaussian_probability(self, feature_vector, mean_matrix, variance_matrix):
-        nstates = mean_matrix.shape[1]
-        feature_matrix = self.__convert_vector_to_matrix(feature_vector, nstates)
-        exponent = np.multiply(-0.5, np.sum(np.true_divide(np.square(feature_matrix - mean_matrix), variance_matrix), axis = 0))
-        denominator = np.multiply(np.power(2 * np.pi, nstates / 2), np.sqrt(np.prod(variance_matrix, axis = 0)))
-        return np.true_divide(np.exp(exponent), denominator)
-
     def __compute_gaussian_probability_log(self, feature_vector, mean_matrix, variance_matrix):
         nstates = mean_matrix.shape[1]
         nfeatures = len(feature_vector)
@@ -100,14 +96,12 @@ class EM:
             b_matrices.append(b)
             g_matrices.append(g)
             z_matrices.append(z)
-
+        
         self.__a = a
         self.__b = b
         self.__g = g
         self.__z = z
 
-        self.__plot_matrices(self.__a, self.__b, np.exp(self.__g), self.__sum_log_probability_matrix(self.__a + self.__b))
-        
         new_initial_state_vector = self.__compute_new_initial_state_vector(a_matrices, b_matrices)
         new_transition_matrix = self.__compute_new_state_transition_matrix(g_matrices, z_matrices)
         new_mean_matrix = self.__compute_new_mean_matrix(feature_matrices, g_matrices)
@@ -199,6 +193,51 @@ class EM:
     def __convert_vector_to_matrix(self, vector, ncolumns):
         return np.transpose(np.tile(vector, (ncolumns, 1)))
 
+    def __create_plots(self):
+        self.__fig, axes = plt.subplots(5, 1)
+
+        axes[0].set_title("Alpha matrix")
+        axes[0].xaxis.grid(True)
+        axes[0].yaxis.grid(True)
+        axes[0].set_xlabel("frames")
+        axes[0].grid(linewidth = 3)
+        self.__a_plot = axes[0]
+        axes[0].imshow(self.__a, aspect='auto')
+
+        axes[1].set_title("Beta matrix")
+        axes[1].xaxis.grid(True)
+        axes[1].yaxis.grid(True)
+        axes[1].set_xlabel("frames")
+        axes[1].grid(linewidth = 3)
+        self.__b_plot= axes[1]
+        axes[1].imshow(self.__b, aspect='auto')
+        
+        axes[2].set_title("Gamma matrix")
+        axes[2].xaxis.grid(True)
+        axes[2].yaxis.grid(True)
+        axes[2].set_xlabel("frames")
+        axes[2].grid(linewidth = 3)
+        self.__g_plot= axes[2]
+        axes[2].imshow(self.__g, aspect='auto')
+
+        axes[3].set_title("Gamma sum vector")
+        axes[3].xaxis.grid(True)
+        axes[3].yaxis.grid(True)
+        axes[3].set_xlabel("frames")
+        axes[3].grid(linewidth = 3)
+        self.__g_sum_plot= axes[3]
+        axes[3].imshow([np.sum(np.exp(self.__g), axis = 0)], aspect='auto')
+
+        axes[4].set_title("Alpha/Beta sum vector")
+        axes[4].xaxis.grid(True)
+        axes[4].yaxis.grid(True)
+        axes[4].set_xlabel("frames")
+        axes[4].grid(linewidth = 3)
+        self.__ab_product_sum_plot = axes[4]
+        axes[4].imshow([self.__sum_log_probability_matrix(self.__a + self.__b)], aspect='auto')
+        
+        self.__fig.tight_layout(pad = 0)
+        
     def __initialize_hmm_parameters(self, nstates, feature_matrices):
         nfeatures = feature_matrices[0].shape[0]
         initial_state_vector = np.zeros(nstates, dtype = np.float)
@@ -219,8 +258,8 @@ class EM:
         for j in range(0, nstates):
             mean_variance = np.var(mean_matrix[:, j])
             for i in range(0, nfeatures):
-                mean_matrix[i, j] = mean_matrix[i, j] + np.random.normal(0, np.sqrt(mean_variance), 1)
-                variance_matrix[i, j] = variance_matrix[i, j] + np.random.normal(0, np.sqrt(variance_matrix[i, j]), 1)
+                mean_matrix[i, j] = np.abs(mean_matrix[i, j] + np.random.normal(0, np.sqrt(mean_variance) / 10.0, 1))
+                variance_matrix[i, j] = np.abs(variance_matrix[i, j] + np.random.normal(0, np.sqrt(variance_matrix[i, j]) / 10.0, 1))
 
         for i in range(0, nstates - 1):
             stay_probability = 0.5
@@ -238,47 +277,6 @@ class EM:
 
         return HMM_Parameters(nstates, initial_state_vector, transition_matrix, mean_matrix, variance_matrix, self.__log_zero)
 
-    def __plot_matrices(self, a, b, g, ab_product_sum):
-        fig, axes = plt.subplots(5, 1)
-
-        axes[0].set_title("Alpha matrix")
-        axes[0].xaxis.grid(True)
-        axes[0].yaxis.grid(True)
-        axes[0].set_xlabel("frames")
-        axes[0].imshow(a, aspect='auto')
-        axes[0].grid(linewidth = 3)
-
-        axes[1].set_title("Beta matrix")
-        axes[1].xaxis.grid(True)
-        axes[1].yaxis.grid(True)
-        axes[1].set_xlabel("frames")
-        axes[1].imshow(b, aspect='auto')
-        axes[1].grid(linewidth = 3)
-        
-        axes[2].set_title("Gamma matrix")
-        axes[2].xaxis.grid(True)
-        axes[2].yaxis.grid(True)
-        axes[2].set_xlabel("frames")
-        axes[2].imshow(g, aspect='auto')
-        axes[2].grid(linewidth = 3)
-
-        axes[3].set_title("Gamma sum vector")
-        axes[3].xaxis.grid(True)
-        axes[3].yaxis.grid(True)
-        axes[3].set_xlabel("frames")
-        axes[3].imshow([np.sum(g, axis = 0)], aspect='auto')
-        axes[3].grid(linewidth = 3)
-
-        axes[4].set_title("Alpha/Beta sum vector")
-        axes[4].xaxis.grid(True)
-        axes[4].yaxis.grid(True)
-        axes[4].set_xlabel("frames")
-        axes[4].imshow([ab_product_sum], aspect='auto')
-        axes[4].grid(linewidth = 3)
-        
-        fig.tight_layout(pad = 1)
-        plt.show()
-
     def __sum_log_probabilities(self, p):
         a = -np.sort(-np.array(p))
         return a[0] + np.log(1 + np.sum(np.exp(a[1:] - a[0])))
@@ -295,6 +293,39 @@ class EM:
         for i in range(0, m.shape[1]):
             results[i] = self.__sum_log_probabilities(m[:, i])
         return results
+
+    def __train_hmm(self, feature_matrices, nstates, result_queue):
+        threshold = 0.05
+        old_hmm_parameters = self.__initialize_hmm_parameters(nstates, feature_matrices)
+        delta = 1.0
+
+        while delta > threshold:
+            new_hmm_parameters = self.__compute_new_hmm_parameters(feature_matrices, old_hmm_parameters)
+            old_likelihood = old_hmm_parameters.get_data_log_likelihood()
+            new_likelihood = new_hmm_parameters.get_data_log_likelihood()
+            delta = np.abs(new_likelihood - old_likelihood) / np.abs(old_likelihood)
+            old_hmm_parameters = new_hmm_parameters
+            self.__iteration = self.__iteration + 1
+
+            #raw_input("Press any key for next step")
+        self.__finished = True
+        result_queue.put(new_hmm_parameters)
+
+    def __update_plots(self, frame):
+        if self.__finished == False:
+            self.__a_plot.set_title("Alpha matrix (iteration = %d)" % self.__iteration)
+            self.__b_plot.set_title("Beta matrix (iteration = %d)" % self.__iteration)
+            self.__g_plot.set_title("Gamma matrix (iteration = %d)" % self.__iteration)
+            self.__g_sum_plot.set_title("Gamma sum vector (iteration = %d)" % self.__iteration)
+            self.__ab_product_sum_plot.set_title("Alpha/beta sum vector (iteration = %d)" % self.__iteration)
+
+            self.__a_plot.imshow(self.__a, aspect='auto')
+            self.__b_plot.imshow(self.__b, aspect='auto')
+            self.__g_plot.imshow(self.__g, aspect='auto')
+            self.__g_sum_plot.imshow([np.sum(np.exp(self.__g), axis = 0)], aspect='auto')
+            self.__ab_product_sum_plot.imshow([self.__sum_log_probability_matrix(self.__a + self.__b)], aspect='auto')
+
+        return None
 
     def build_hmm_from_folder(self, folder_path, nstates):
         audio_files = []
@@ -317,20 +348,23 @@ class EM:
         return self.build_hmm_from_signals(signals, fs, nstates)
 
     def build_hmm_from_feature_matrices(self, feature_matrices, nstates):
-        threshold = 0.05
-        old_hmm_parameters = self.__initialize_hmm_parameters(nstates, feature_matrices)
-        delta = 1.0
+        self.__a = np.full((nstates, feature_matrices[0].shape[1]), self.__log_zero)
+        self.__b = np.full(self.__a.shape, self.__log_zero)
+        self.__g = np.full(self.__a.shape, self.__log_zero)
+        self.__iteration = 0
+        self.__finished = False
 
-        while delta > threshold:
-            new_hmm_parameters = self.__compute_new_hmm_parameters(feature_matrices, old_hmm_parameters)
-            old_likelihood = old_hmm_parameters.get_data_log_likelihood()
-            new_likelihood = new_hmm_parameters.get_data_log_likelihood()
-            delta = np.abs(new_likelihood - old_likelihood) / np.abs(old_likelihood)
-            old_hmm_parameters = new_hmm_parameters
+        self.__create_plots()
+        self.__animation = animation.FuncAnimation(self.__fig, self.__update_plots, interval = 1000, blit = False, repeat = False)
 
-        self.__plot_matrices(self.__a, self.__b, self.__g, self.__sum_log_probability_matrix(self.__a + self.__b))
+        result = Queue.Queue()
+        training_thread = Thread(target = self.__train_hmm, args = [feature_matrices, nstates, result])
+        training_thread.start()
 
-        return new_hmm_parameters
+        plt.show()
+        
+        training_thread.join()
+        return result.get()
 
     def build_hmm_from_signals(self, signals, fs, nstates):
         feature_matrices = []
@@ -386,4 +420,5 @@ if __name__ == '__main__':
     folder_path = "C:\Users\AkramAsylum\OneDrive\Courses\School\EE 516 - Compute Speech Processing\Assignments\Assignment 5\samples\odessa"
 
     em = EM()
-    em.build_hmm_from_folder(folder_path,10)
+    result = em.build_hmm_from_folder(folder_path, 10)
+    print("Done!")
