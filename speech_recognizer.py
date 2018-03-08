@@ -1,6 +1,8 @@
 from asr_feature_builder import ASR_Feature_Builder
 from Queue import LifoQueue
 from speech_sampler import Speech_Sampler
+from speech_state_machine import Speech_State_Machine
+import hmm
 import multiprocessing
 import numpy as np
 import os
@@ -51,7 +53,7 @@ class ASR_Feature_Builder_Plot_Options:
 
 class Speech_Recognizer:
 
-    def __init__(self):
+    def __init__(self, speech_state_machine):
 
         # Speech sampler
         self.__fs = 16000
@@ -73,11 +75,13 @@ class Speech_Recognizer:
         self.__queue_lock = threading.Lock()
         self.__plot_option = -1
         self.__speech_segments = LifoQueue()
+        self.__speech_state_machine = speech_state_machine
         self.__stop_processing = False
 
         self.__feature_builder.set_plot_blocking(True)
         self.__sampler.add_sample_callback(self.__queue_speech_segment)
         self.__sampler.hide_spectrogram_plot()
+        self.__speech_state_machine.add_speech_match_callback(self.__speech_matched)
 
     def __empty_speech_segment_queue(self):
         self.__queue_lock.acquire(True)
@@ -158,7 +162,7 @@ class Speech_Recognizer:
             if speech_segment is None:
                 continue
             
-            self.__feature_builder.compute_features_for_signal( \
+            feature_matrix = self.__feature_builder.compute_features_for_signal( \
                 speech_segment, \
                 self.__fs, \
                 self.__feature_nfilters, \
@@ -166,6 +170,8 @@ class Speech_Recognizer:
                 self.__feature_skip_duration, \
                 self.__feature_radius, \
                 self.__feature_nfilters_keep)
+
+            self.__speech_state_machine.update(feature_matrix)
 
             plot_options = ASR_Feature_Builder_Plot_Options( \
                     self.__feature_builder, \
@@ -190,6 +196,9 @@ class Speech_Recognizer:
         self.__speech_segments.put(speech_segment)
         self.__queue_lock.release()
 
+    def __speech_matched(self, hmm, phrase, is_primary):
+        print("Holy shit we recognized: %s" % phrase)
+
     def run(self):
         processing_thread = threading.Thread(target = self.__process_speech_segments)
         interactive_thread = threading.Thread(target = self.__handle_interactive)
@@ -203,5 +212,40 @@ class Speech_Recognizer:
         interactive_thread.join()
 
 if __name__ == '__main__':
-    speech_recognizer = Speech_Recognizer()
+    hmm_folder_path = "C:\Users\AkramAsylum\OneDrive\Courses\School\EE 516 - Compute Speech Processing\Assignments\Assignment 5\hmm"
+
+    odessa_hmm = os.path.join(hmm_folder_path, "odessa.hmm")
+    play_music_hmm = os.path.join(hmm_folder_path, "play_music.hmm")
+    stop_music_hmm = os.path.join(hmm_folder_path, "stop_music.hmm")
+    turn_on_the_lights_hmm = os.path.join(hmm_folder_path, "turn_on_the_lights.hmm")
+    turn_off_the_lights_hmm = os.path.join(hmm_folder_path, "turn_off_the_lights.hmm")
+    what_time_is_it_hmm = os.path.join(hmm_folder_path, "what_time_is_it.hmm")
+
+    speech_state_machine = Speech_State_Machine()
+    if os.path.exists(odessa_hmm):
+        odessa_speech_hmm = hmm.HMM()
+        odessa_speech_hmm.initialize_from_file(odessa_hmm)
+        speech_state_machine.set_primary_hmm(odessa_speech_hmm, "odessa")
+    if os.path.exists(play_music_hmm):
+        play_music_speech_hmm = hmm.HMM()
+        play_music_speech_hmm.initialize_from_file(play_music_hmm)
+        speech_state_machine.add_secondary_hmm(play_music_speech_hmm, "play music")
+    if os.path.exists(stop_music_hmm):
+        stop_music_speech_hmm = hmm.HMM()
+        stop_music_speech_hmm.initialize_from_file(stop_music_hmm)
+        speech_state_machine.add_secondary_hmm(stop_music_speech_hmm, "stop music")
+    if os.path.exists(turn_on_the_lights_hmm):
+        turn_on_the_lights_speech_hmm = hmm.HMM()
+        turn_on_the_lights_speech_hmm.initialize_from_file(turn_on_the_lights_hmm)
+        speech_state_machine.add_secondary_hmm(turn_on_the_lights_speech_hmm, "turn on the lights")
+    if os.path.exists(turn_off_the_lights_hmm):
+        turn_off_the_lights_speech_hmm = hmm.HMM()
+        turn_off_the_lights_speech_hmm.initialize_from_file(turn_off_the_lights_hmm)
+        speech_state_machine.add_secondary_hmm(turn_off_the_lights_speech_hmm, "turn off the lights")
+    if os.path.exists(what_time_is_it_hmm):
+        what_time_is_it_speech_hmm = hmm.HMM()
+        what_time_is_it_speech_hmm.initialize_from_file(what_time_is_it_hmm)
+        speech_state_machine.add_secondary_hmm(what_time_is_it_speech_hmm, "what time is it")
+
+    speech_recognizer = Speech_Recognizer(speech_state_machine)
     speech_recognizer.run()

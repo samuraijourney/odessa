@@ -1,6 +1,7 @@
 from asr_feature_builder import ASR_Feature_Builder
 from matplotlib import animation
 from threading import Thread
+import hmm
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -21,9 +22,6 @@ class EM:
         self.__feature_radius = 2
         self.__feature_builder = ASR_Feature_Builder()
 
-        # Continuous builder
-        self.__speech_segments = []
-
     def __compute_ab_matrices(self, feature_matrix, hmm_parameters):
         mean_matrix = hmm_parameters.get_mean_matrix()
         nstates = hmm_parameters.get_nstates()
@@ -33,8 +31,7 @@ class EM:
         a = np.full((nstates, feature_matrix.shape[1]), self.__log_zero)
         b = np.full(a.shape, self.__log_zero)
 
-        #a[:, 0] = hmm_parameters.get_initial_state_vector()
-        a[0, 0] = 1
+        a[0, 0] = np.log(1)
         b[-1, -1] = np.log(1)
 
         for t in range(1, a.shape[1]):
@@ -108,7 +105,7 @@ class EM:
         new_variance_matrix = self.__compute_new_variance_matrix(feature_matrices, new_mean_matrix, g_matrices)
         data_log_likelihood = self.__compute_data_log_likelihood(a_matrices)
         
-        return HMM_Parameters(hmm_parameters.get_nstates(), new_initial_state_vector, new_transition_matrix, new_mean_matrix, new_variance_matrix, data_log_likelihood)
+        return hmm.HMM_Parameters(hmm_parameters.get_nstates(), new_initial_state_vector, new_transition_matrix, new_mean_matrix, new_variance_matrix, data_log_likelihood)
 
     def __compute_new_initial_state_vector(self, a_matrices, b_matrices):
         nstates = a_matrices[0].shape[0]
@@ -278,7 +275,7 @@ class EM:
         initial_state_vector[0] = initial_state_vector[0] + (1 - np.sum(initial_state_vector))
         initial_state_vector = np.log(initial_state_vector)
 
-        return HMM_Parameters(nstates, initial_state_vector, transition_matrix, mean_matrix, variance_matrix, self.__log_zero)
+        return hmm.HMM_Parameters(nstates, initial_state_vector, transition_matrix, mean_matrix, variance_matrix, self.__log_zero)
 
     def __sum_log_probabilities(self, p):
         a = -np.sort(-np.array(p))
@@ -309,7 +306,6 @@ class EM:
             delta = np.abs(new_likelihood - old_likelihood) / np.abs(old_likelihood)
             old_hmm_parameters = new_hmm_parameters
 
-            #raw_input("Press any key for next step")
             self.__iteration = self.__iteration + 1
 
         print("Finished!")
@@ -330,7 +326,7 @@ class EM:
 
         return None
 
-    def build_hmm_from_folder(self, folder_path, nstates):
+    def build_hmm_from_folder(self, folder_path, nstates, show_plots = False):
         audio_files = []
 
         for file in os.listdir(folder_path):
@@ -338,9 +334,9 @@ class EM:
                 file_path = os.path.join(folder_path, file)
                 audio_files.append(file_path)
         
-        return self.build_hmm_from_files(audio_files, nstates)
+        return self.build_hmm_from_files(audio_files, nstates, show_plots)
 
-    def build_hmm_from_files(self, audio_files, nstates):
+    def build_hmm_from_files(self, audio_files, nstates, show_plots = False):
         signals = []
         fs = -1
 
@@ -348,27 +344,33 @@ class EM:
             fs, s = wavfile.read(audio_file, 'rb')
             signals.append(s)
         
-        return self.build_hmm_from_signals(signals, fs, nstates)
+        return self.build_hmm_from_signals(signals, fs, nstates, show_plots)
 
-    def build_hmm_from_feature_matrices(self, feature_matrices, nstates):
+    def build_hmm_from_feature_matrices(self, feature_matrices, nstates, show_plots = False):
         self.__a = np.full((nstates, feature_matrices[0].shape[1]), self.__log_zero)
         self.__b = np.full(self.__a.shape, self.__log_zero)
         self.__g = np.full(self.__a.shape, self.__log_zero)
         self.__iteration = 0
 
-        self.__create_plots()
-        self.__animation = animation.FuncAnimation(self.__fig, self.__update_plots, interval = 1000, blit = False, repeat = False)
+        if show_plots:
+            self.__create_plots()
+            self.__animation = animation.FuncAnimation(self.__fig, self.__update_plots, interval = 1000, blit = False, repeat = False)
 
         result = Queue.Queue()
         training_thread = Thread(target = self.__train_hmm, args = [feature_matrices, nstates, result])
         training_thread.start()
 
-        plt.show()
+        if show_plots:
+            plt.show()
         
         training_thread.join()
-        return result.get()
 
-    def build_hmm_from_signals(self, signals, fs, nstates):
+        new_hmm = hmm.HMM()
+        new_hmm.initialize_from_hmm_parameters(result.get())
+
+        return new_hmm
+
+    def build_hmm_from_signals(self, signals, fs, nstates, show_plots = False):
         feature_matrices = []
 
         for s in signals:
@@ -383,48 +385,44 @@ class EM:
 
             feature_matrices.append(feature_matrix)
         
-        return self.build_hmm_from_feature_matrices(feature_matrices, nstates)
-
-    def build_hmm_continuous(self, speech_segment, fs, nstates):
-        self.__speech_segments.append(speech_segment)
-
-        return self.build_hmm_from_signals(self.__speech_segments, fs, nstates)
-
-class HMM_Parameters:
-
-    def __init__(self, nstates, initial_state_vector, transition_matrix, mean_matrix, variance_matrix, data_log_likelihood):
-        self.__data_log_likelihood = data_log_likelihood
-        self.__initial_state_vector = initial_state_vector
-        self.__mean_matrix = mean_matrix
-        self.__nstates = nstates
-        self.__transition_matrix = transition_matrix
-        self.__variance_matrix = variance_matrix
-
-    def get_data_log_likelihood(self):
-        return self.__data_log_likelihood
-
-    def get_initial_state_vector(self):
-        return self.__initial_state_vector
-
-    def get_mean_matrix(self):
-        return self.__mean_matrix
-
-    def get_nstates(self):
-        return self.__nstates
-    
-    def get_transition_matrix(self):
-        return self.__transition_matrix
-
-    def get_variance_matrix(self):
-        return self.__variance_matrix
-
-#class HMM:
-
-    #def __init__(self, observation_matrix, transition_matrix, mean_matrix, variance_matrix, data_log_likelihood)
+        return self.build_hmm_from_feature_matrices(feature_matrices, nstates, show_plots)
 
 if __name__ == '__main__':
-    folder_path = "C:\Users\AkramAsylum\OneDrive\Courses\School\EE 516 - Compute Speech Processing\Assignments\Assignment 5\samples\what_time_is_it"
+    training_list = []
+
+    hmm_folder_path = "C:\Users\AkramAsylum\OneDrive\Courses\School\EE 516 - Compute Speech Processing\Assignments\Assignment 5\hmm"
+    hmm_sample_path = "C:\Users\AkramAsylum\OneDrive\Courses\School\EE 516 - Compute Speech Processing\Assignments\Assignment 5\samples"
+
+    odessa_music_hmm = os.path.join(hmm_folder_path, "odessa.hmm")
+    play_music_hmm = os.path.join(hmm_folder_path, "play_music.hmm")
+    stop_music_hmm = os.path.join(hmm_folder_path, "stop_music.hmm")
+    turn_on_the_lights_hmm = os.path.join(hmm_folder_path, "turn_on_the_lights.hmm")
+    turn_off_the_lights_hmm = os.path.join(hmm_folder_path, "turn_off_the_lights.hmm")
+    what_time_is_it_hmm = os.path.join(hmm_folder_path, "what_time_is_it.hmm")
+
+    odessa_music_samples = os.path.join(hmm_sample_path, "odessa")
+    play_music_samples = os.path.join(hmm_sample_path, "play_music")
+    stop_music_samples = os.path.join(hmm_sample_path, "stop_music")
+    turn_on_the_lights_samples = os.path.join(hmm_sample_path, "turn_on_the_lights")
+    turn_off_the_lights_samples = os.path.join(hmm_sample_path, "turn_off_the_lights")
+    what_time_is_it_samples = os.path.join(hmm_sample_path, "what_time_is_it")
+
+    if not os.path.exists(odessa_music_hmm):
+        training_list.append((odessa_music_samples, odessa_music_hmm))
+    if not os.path.exists(play_music_hmm):
+        training_list.append((play_music_samples, play_music_hmm))
+    if not os.path.exists(stop_music_hmm):
+        training_list.append((stop_music_samples, stop_music_hmm))
+    if not os.path.exists(turn_on_the_lights_hmm):
+        training_list.append((turn_on_the_lights_samples, turn_on_the_lights_hmm))
+    if not os.path.exists(turn_off_the_lights_hmm):
+        training_list.append((turn_off_the_lights_samples, turn_off_the_lights_hmm))
+    if not os.path.exists(what_time_is_it_hmm):
+        training_list.append((what_time_is_it_samples, what_time_is_it_hmm))
 
     em = EM()
-    result = em.build_hmm_from_folder(folder_path, 10)
+    for item in training_list:
+        speech_hmm = em.build_hmm_from_folder(item[0], 10, True)
+        speech_hmm.save(item[1])
+
     print("Done!")
