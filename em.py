@@ -47,9 +47,9 @@ class EM:
         return a, b
 
     def __compute_data_log_likelihood(self, a_matrices):
-        p = 1
+        p = 0
         for i in range(0, len(a_matrices)):
-            p = p * a_matrices[i][-1, -1]
+            p = p + a_matrices[i][-1, -1]
         return p
 
     def __compute_gaussian_probability_log(self, feature_vector, mean_matrix, variance_matrix):
@@ -298,7 +298,7 @@ class EM:
         return results
 
     def __train_hmm(self, feature_matrices, nstates, result_queue):
-        threshold = 0.05
+        threshold = 0.000001
         old_hmm_parameters = self.__initialize_hmm_parameters(nstates, feature_matrices)
         delta = 1.0
 
@@ -418,8 +418,12 @@ class HMM_Parameters:
     def get_variance_matrix(self):
         return self.__variance_matrix
 
+#class HMM:
+
+    #def __init__(self, observation_matrix, transition_matrix, mean_matrix, variance_matrix, data_log_likelihood)
+
 if __name__ == '__main__':
-    folder_path = "C:\Users\AkramAsylum\OneDrive\Courses\School\EE 516 - Compute Speech Processing\Assignments\Assignment 5\samples\odessa"
+    folder_path = "C:\Users\AkramAsylum\OneDrive\Courses\School\EE 516 - Compute Speech Processing\Assignments\Assignment 5\samples\what_time_is_it"
 
     em = EM()
     result = em.build_hmm_from_folder(folder_path, 10)
