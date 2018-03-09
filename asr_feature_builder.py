@@ -118,11 +118,11 @@ class ASR_Feature_Builder:
         self.__nwindows = int(np.ceil((s.size - self.__window_size) / float(self.__skip_size)))
         self.__fft_window_length = int(np.power(2, (next_power-1) + np.ceil(np.log2(self.__window_size))))
         self.__fft_freq = np.fft.fftfreq(self.__fft_window_length) * self.__fs
-        self.__mfcc_features_matrix = np.ndarray(shape=(self.__nfilters, self.__nwindows), dtype=float)
-        self.__fft_mag = np.ndarray(shape = (self.__nwindows, self.__fft_window_length), dtype=float)
-        self.__filtered_spectra = np.ndarray(shape = (self.__nwindows, self.__nfilters, self.__fft_window_length), dtype=float)
-        self.__filtered_spectra_sums = np.ndarray(shape = (self.__nwindows, self.__nfilters), dtype=float)
-        self.__filtered_spectra_sums_log = np.ndarray(shape = (self.__nwindows, self.__nfilters), dtype=float)
+        self.__mfcc_features_matrix = np.zeros(shape=(self.__nfilters, self.__nwindows), dtype=float)
+        self.__fft_mag = np.zeros(shape = (self.__nwindows, self.__fft_window_length), dtype=float)
+        self.__filtered_spectra = np.zeros(shape = (self.__nwindows, self.__nfilters, self.__fft_window_length), dtype=float)
+        self.__filtered_spectra_sums = np.zeros(shape = (self.__nwindows, self.__nfilters), dtype=float)
+        self.__filtered_spectra_sums_log = np.zeros(shape = (self.__nwindows, self.__nfilters), dtype=float)
 
         self.__filter_banks = self.__create_filter_banks(self.__fft_freq, 0, np.max(self.__fft_freq))
 
@@ -130,11 +130,6 @@ class ASR_Feature_Builder:
             frame_index = offset / self.__skip_size
             self.__mfcc_features_matrix[:, frame_index] = self.__compute_mfcc_for_window(s[offset : (offset + self.__window_size)], frame_index)
             offset = offset + self.__skip_size
-    
-        # Side effects of performing DCT can result in dividing by zero errors, replace these values with the median.ASR_Feature_Builder
-        # Fixing this clears up resultant plots as well since the color scheme isn't skewed by large magnitudes
-        # Should probably do proper outlier detection here instead of checking against an arbitrary threshold
-        self.__mfcc_features_matrix[np.where(np.abs(self.__mfcc_features_matrix) > 10000)] = np.median(self.__mfcc_features_matrix)
 
         return self.__mfcc_features_matrix
 
@@ -167,6 +162,9 @@ class ASR_Feature_Builder:
 
     def plot_all_mfcc_features_matrix(self):
         self.plot_mfcc_features_matrix(len(self.__all_plot_filter_bank_indices))
+
+    def plot_all_mfcc_transitions(self):
+        self.plot_mfcc_transitions(len(self.__all_plot_filter_bank_indices))
 
     def plot_delta_features_matrix(self, nfilters):
         plt.figure()
