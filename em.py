@@ -298,6 +298,7 @@ class EM:
         threshold = 0.000001
         old_hmm_parameters = self.__initialize_hmm_parameters(nstates, feature_matrices)
         delta = 1.0
+        new_likelihood = 0.0
 
         while delta > threshold:
             new_hmm_parameters = self.__compute_new_hmm_parameters(feature_matrices, old_hmm_parameters)
@@ -308,8 +309,13 @@ class EM:
 
             self.__iteration = self.__iteration + 1
 
-        print("Finished!")
+        print("Finished - Delta: %.8f      Likelihood: %.4f" % (delta, new_likelihood))
         result_queue.put(new_hmm_parameters)
+
+    def __validate_hmm(self, feature_matrices, new_hmm):
+        for feature_matrix in feature_matrices:
+            log_probability = new_hmm.match_log_probability(feature_matrix)
+            print("Match: %.8f" % log_probability)
 
     def __update_plots(self, frame):
         self.__a_plot.set_title("Alpha matrix (iteration = %d)" % self.__iteration)
@@ -368,6 +374,8 @@ class EM:
         new_hmm = hmm.HMM()
         new_hmm.initialize_from_hmm_parameters(result.get())
 
+        self.__validate_hmm(feature_matrices, new_hmm)
+
         return new_hmm
 
     def build_hmm_from_signals(self, signals, fs, nstates, show_plots = False):
@@ -408,21 +416,24 @@ if __name__ == '__main__':
     what_time_is_it_samples = os.path.join(hmm_sample_path, "what_time_is_it")
 
     if not os.path.exists(odessa_music_hmm):
-        training_list.append((odessa_music_samples, odessa_music_hmm))
+        training_list.append([odessa_music_samples, odessa_music_hmm, 6])
     if not os.path.exists(play_music_hmm):
-        training_list.append((play_music_samples, play_music_hmm))
+        training_list.append([play_music_samples, play_music_hmm, 8])
     if not os.path.exists(stop_music_hmm):
-        training_list.append((stop_music_samples, stop_music_hmm))
+        training_list.append([stop_music_samples, stop_music_hmm, 9])
     if not os.path.exists(turn_on_the_lights_hmm):
-        training_list.append((turn_on_the_lights_samples, turn_on_the_lights_hmm))
+        training_list.append([turn_on_the_lights_samples, turn_on_the_lights_hmm, 11])
     if not os.path.exists(turn_off_the_lights_hmm):
-        training_list.append((turn_off_the_lights_samples, turn_off_the_lights_hmm))
+        training_list.append([turn_off_the_lights_samples, turn_off_the_lights_hmm, 11])
     if not os.path.exists(what_time_is_it_hmm):
-        training_list.append((what_time_is_it_samples, what_time_is_it_hmm))
+        training_list.append([what_time_is_it_samples, what_time_is_it_hmm, 10])
 
     em = EM()
     for item in training_list:
-        speech_hmm = em.build_hmm_from_folder(item[0], 10, True)
+        folder_name = os.path.split(item[0])[-1]
+        print("Training %s..." % folder_name)
+
+        speech_hmm = em.build_hmm_from_folder(item[0], item[2], True)
         speech_hmm.save(item[1])
 
     print("Done!")

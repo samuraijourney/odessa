@@ -56,9 +56,9 @@ class HMM:
         self.initialize_from_data(hmm_parameters.get_transition_matrix(), hmm_parameters.get_mean_matrix(), hmm_parameters.get_variance_matrix())
 
     def match(self, feature_matrix, log_match_threshold):
-        return self.match_probability(feature_matrix) > log_match_threshold
+        return self.match_log_probability(feature_matrix) > log_match_threshold
 
-    def match_probability(self, feature_matrix):
+    def match_log_probability(self, feature_matrix):
         match = 0
         current_state = 0
 
