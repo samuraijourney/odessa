@@ -54,8 +54,8 @@ class EM:
         nfeatures = len(feature_vector)
         feature_matrix = self.__convert_vector_to_matrix(feature_vector, nstates)
         exponent = -0.5 * np.sum(np.true_divide(np.square(feature_matrix - mean_matrix), variance_matrix), axis = 0)
-        denominator = -0.5 * nfeatures * np.log(2 * np.pi) - 0.5 * np.sum(np.log(variance_matrix), axis = 0)
-        return exponent + denominator
+        denominator = 0.5 * nfeatures * np.log(2 * np.pi) + 0.5 * np.sum(np.log(variance_matrix), axis = 0)
+        return exponent - denominator
 
     def __compute_gz_matrices(self, a, b, feature_matrix, hmm_parameters):
         mean_matrix = hmm_parameters.get_mean_matrix()
@@ -74,9 +74,9 @@ class EM:
 
             p = self.__compute_gaussian_probability_log(feature_matrix[:, t], mean_matrix, variance_matrix)
 
-            for q2 in range(0, nstates):
-                for q1 in range(0, nstates):
-                    z[q1, q2, t] = b[q2, t] + a[q1, t - 1] + transition_matrix[q1, q2] + p[q2]
+            for j in range(0, nstates):
+                for i in range(0, nstates):
+                    z[i, j, t - 1] = b[j, t] + a[i, t - 1] + transition_matrix[i, j] + p[j] - a[-1, -1]
 
         return g, z
 
@@ -161,7 +161,6 @@ class EM:
                 numerator2[i, j] = self.__sum_log_probabilities(numerator[i, j, :])
 
         transition_matrix = numerator2 - denominator2.reshape((len(denominator2), 1))
-        transition_matrix = transition_matrix - self.__sum_log_probability_matrix(np.transpose(transition_matrix)).reshape((nstates, 1))
         
         return transition_matrix
 
@@ -256,10 +255,11 @@ class EM:
         mean_matrix = self.__convert_vector_to_matrix(mean_vector, nstates)
 
         for j in range(0, nstates):
-            mean_variance = np.var(mean_matrix[:, j])
-            for i in range(0, nfeatures):
-                mean_matrix[i, j] = np.abs(mean_matrix[i, j] + np.random.normal(0, np.sqrt(mean_variance), 1))
-                variance_matrix[i, j] = np.abs(variance_matrix[i, j] + np.random.normal(0, np.sqrt(variance_matrix[i, j]), 1))
+           mean_std = np.sqrt(variance_vector[j])
+           variance_std = mean_std
+           for i in range(0, nfeatures):
+               mean_matrix[i, j] = mean_matrix[i, j] + np.random.normal(-mean_std, mean_std, 1)
+               variance_matrix[i, j] = np.abs(variance_matrix[i, j] + np.random.normal(-variance_std, variance_std, 1))
 
         for i in range(0, nstates - 1):
             stay_probability = np.random.uniform(0, 1, 1)
@@ -307,9 +307,10 @@ class EM:
             delta = np.abs(new_likelihood - old_likelihood) / np.abs(old_likelihood)
             old_hmm_parameters = new_hmm_parameters
 
+            print("\tIteration %d - Delta: %.8f, Likelihood: %.4f" % (self.__iteration, delta, new_likelihood))
             self.__iteration = self.__iteration + 1
 
-        print("Finished - Delta: %.8f      Likelihood: %.4f" % (delta, new_likelihood))
+        print("Finished - Delta: %.8f, Likelihood: %.4f" % (delta, new_likelihood))
         result_queue.put(new_hmm_parameters)
 
     def __update_plots(self, frame):
@@ -430,12 +431,12 @@ if __name__ == '__main__':
         speech_hmm = em.build_hmm_from_folder(item[0], item[2], False)
         speech_hmm.save(item[1])
 
-        matches = speech_hmm.match_from_folder(item[0])
-        for match in matches:
-            print("Same match: %.3f" % match)
-        
-        matches = speech_hmm.match_from_folder(garbage_samples)
-        for match in matches:
-            print("Different match: %.3f" % match)
+        good_matches = speech_hmm.match_from_folder(item[0])
+        bad_matches = speech_hmm.match_from_folder(garbage_samples)
 
-    print("Done!")
+        length = min(len(good_matches), len(bad_matches))
+        for i in range(0, length):
+            print("\tGood match: %.3f, Bad match: %.3f" % (good_matches[i], bad_matches[i]))
+        print("")
+
+    print("Training complete")
