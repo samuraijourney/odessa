@@ -28,14 +28,14 @@ class Speech_State_Machine:
             return
 
         if (not self.__primary_signaled):
-            if self.__primary_hmm.match(feature_matrix, self.__log_match_threshold):
+            if self.__primary_hmm.match_from_feature_matrices(feature_matrix) > self.__log_match_threshold:
                 self.__primary_signaled = True
                 self.__run_callbacks(self.__primary_hmm, self.__hmm_phrase_map[self.__primary_hmm], True)
         else:
             hmm_probability_map = {}
 
             for speech_hmm in self.__hmm_phrase_map:
-                hmm_probability_map[speech_hmm] = speech_hmm.match_probability(feature_matrix)
+                hmm_probability_map[speech_hmm] = speech_hmm.match_from_feature_matrices(feature_matrix)
             selected_hmm, log_probability = max(hmm_probability_map.iteritems(), key = operator.itemgetter(1))
 
             if log_probability > self.__log_match_threshold:

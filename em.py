@@ -312,11 +312,6 @@ class EM:
         print("Finished - Delta: %.8f      Likelihood: %.4f" % (delta, new_likelihood))
         result_queue.put(new_hmm_parameters)
 
-    def __validate_hmm(self, feature_matrices, new_hmm):
-        for feature_matrix in feature_matrices:
-            log_probability = new_hmm.match_log_probability(feature_matrix)
-            print("Match: %.8f" % log_probability)
-
     def __update_plots(self, frame):
         self.__a_plot.set_title("Alpha matrix (iteration = %d)" % self.__iteration)
         self.__b_plot.set_title("Beta matrix (iteration = %d)" % self.__iteration)
@@ -374,8 +369,6 @@ class EM:
         new_hmm = hmm.HMM()
         new_hmm.initialize_from_hmm_parameters(result.get())
 
-        self.__validate_hmm(feature_matrices, new_hmm)
-
         return new_hmm
 
     def build_hmm_from_signals(self, signals, fs, nstates, show_plots = False):
@@ -401,22 +394,23 @@ if __name__ == '__main__':
     hmm_folder_path = "C:\Users\AkramAsylum\OneDrive\Courses\School\EE 516 - Compute Speech Processing\Assignments\Assignment 5\hmm"
     hmm_sample_path = "C:\Users\AkramAsylum\OneDrive\Courses\School\EE 516 - Compute Speech Processing\Assignments\Assignment 5\samples"
 
-    odessa_music_hmm = os.path.join(hmm_folder_path, "odessa.hmm")
+    odessa_hmm = os.path.join(hmm_folder_path, "odessa.hmm")
     play_music_hmm = os.path.join(hmm_folder_path, "play_music.hmm")
     stop_music_hmm = os.path.join(hmm_folder_path, "stop_music.hmm")
     turn_on_the_lights_hmm = os.path.join(hmm_folder_path, "turn_on_the_lights.hmm")
     turn_off_the_lights_hmm = os.path.join(hmm_folder_path, "turn_off_the_lights.hmm")
     what_time_is_it_hmm = os.path.join(hmm_folder_path, "what_time_is_it.hmm")
 
-    odessa_music_samples = os.path.join(hmm_sample_path, "odessa")
+    garbage_samples = os.path.join(hmm_sample_path, "garbage")
+    odessa_samples = os.path.join(hmm_sample_path, "odessa")
     play_music_samples = os.path.join(hmm_sample_path, "play_music")
     stop_music_samples = os.path.join(hmm_sample_path, "stop_music")
     turn_on_the_lights_samples = os.path.join(hmm_sample_path, "turn_on_the_lights")
     turn_off_the_lights_samples = os.path.join(hmm_sample_path, "turn_off_the_lights")
     what_time_is_it_samples = os.path.join(hmm_sample_path, "what_time_is_it")
 
-    if not os.path.exists(odessa_music_hmm):
-        training_list.append([odessa_music_samples, odessa_music_hmm, 6])
+    if not os.path.exists(odessa_hmm):
+        training_list.append([odessa_samples, odessa_hmm, 6])
     if not os.path.exists(play_music_hmm):
         training_list.append([play_music_samples, play_music_hmm, 8])
     if not os.path.exists(stop_music_hmm):
@@ -433,7 +427,15 @@ if __name__ == '__main__':
         folder_name = os.path.split(item[0])[-1]
         print("Training %s..." % folder_name)
 
-        speech_hmm = em.build_hmm_from_folder(item[0], item[2], True)
+        speech_hmm = em.build_hmm_from_folder(item[0], item[2], False)
         speech_hmm.save(item[1])
+
+        matches = speech_hmm.match_from_folder(item[0])
+        for match in matches:
+            print("Same match: %.3f" % match)
+        
+        matches = speech_hmm.match_from_folder(garbage_samples)
+        for match in matches:
+            print("Different match: %.3f" % match)
 
     print("Done!")
