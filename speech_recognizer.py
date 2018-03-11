@@ -161,9 +161,9 @@ class Speech_Recognizer:
             speech_segment = self.__get_speech_segment()
             if speech_segment is None:
                 continue
-            
+
             feature_matrix = self.__feature_builder.compute_features_for_signal( \
-                speech_segment, \
+                speech_segment * np.iinfo(np.int16).max, \
                 self.__fs, \
                 self.__feature_nfilters, \
                 self.__feature_window_duration, \
@@ -221,31 +221,38 @@ if __name__ == '__main__':
     turn_off_the_lights_hmm = os.path.join(hmm_folder_path, "turn_off_the_lights.hmm")
     what_time_is_it_hmm = os.path.join(hmm_folder_path, "what_time_is_it.hmm")
 
+    odessa_threshold = -900.0
+    play_music_threshold = -900.0
+    stop_music_threshold = -1100.0
+    turn_on_the_lights_threshold = -1100.0
+    turn_off_the_lights_threshold = -1100.0
+    what_time_is_it_threshold = -1000.0
+
     speech_state_machine = Speech_State_Machine()
     if os.path.exists(odessa_hmm):
         odessa_speech_hmm = hmm.HMM()
         odessa_speech_hmm.initialize_from_file(odessa_hmm)
-        speech_state_machine.set_primary_hmm(odessa_speech_hmm, "odessa")
+        speech_state_machine.set_primary_hmm(odessa_speech_hmm, "odessa", odessa_threshold)
     if os.path.exists(play_music_hmm):
         play_music_speech_hmm = hmm.HMM()
         play_music_speech_hmm.initialize_from_file(play_music_hmm)
-        speech_state_machine.add_secondary_hmm(play_music_speech_hmm, "play music")
+        speech_state_machine.add_secondary_hmm(play_music_speech_hmm, "play music", play_music_threshold)
     if os.path.exists(stop_music_hmm):
         stop_music_speech_hmm = hmm.HMM()
         stop_music_speech_hmm.initialize_from_file(stop_music_hmm)
-        speech_state_machine.add_secondary_hmm(stop_music_speech_hmm, "stop music")
+        speech_state_machine.add_secondary_hmm(stop_music_speech_hmm, "stop music", stop_music_threshold)
     if os.path.exists(turn_on_the_lights_hmm):
         turn_on_the_lights_speech_hmm = hmm.HMM()
         turn_on_the_lights_speech_hmm.initialize_from_file(turn_on_the_lights_hmm)
-        speech_state_machine.add_secondary_hmm(turn_on_the_lights_speech_hmm, "turn on the lights")
+        speech_state_machine.add_secondary_hmm(turn_on_the_lights_speech_hmm, "turn on the lights", turn_on_the_lights_threshold)
     if os.path.exists(turn_off_the_lights_hmm):
         turn_off_the_lights_speech_hmm = hmm.HMM()
         turn_off_the_lights_speech_hmm.initialize_from_file(turn_off_the_lights_hmm)
-        speech_state_machine.add_secondary_hmm(turn_off_the_lights_speech_hmm, "turn off the lights")
+        speech_state_machine.add_secondary_hmm(turn_off_the_lights_speech_hmm, "turn off the lights", turn_off_the_lights_threshold)
     if os.path.exists(what_time_is_it_hmm):
         what_time_is_it_speech_hmm = hmm.HMM()
         what_time_is_it_speech_hmm.initialize_from_file(what_time_is_it_hmm)
-        speech_state_machine.add_secondary_hmm(what_time_is_it_speech_hmm, "what time is it")
+        speech_state_machine.add_secondary_hmm(what_time_is_it_speech_hmm, "what time is it", what_time_is_it_threshold)
 
     speech_recognizer = Speech_Recognizer(speech_state_machine)
     speech_recognizer.run()

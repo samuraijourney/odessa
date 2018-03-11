@@ -44,8 +44,8 @@ class HMM:
     def __compute_gaussian_probability_log(self, feature_vector):
         feature_matrix = np.transpose(np.tile(feature_vector, (self.__nstates, 1)))
         exponent = -0.5 * np.sum(np.true_divide(np.square(feature_matrix - self.__mean_matrix), self.__variance_matrix), axis = 0)
-        denominator = -0.5 * self.__nfeatures * np.log(2 * np.pi) - 0.5 * np.sum(np.log(self.__variance_matrix), axis = 0)
-        return exponent + denominator
+        denominator = 0.5 * self.__nfeatures * np.log(2 * np.pi) + 0.5 * np.sum(np.log(self.__variance_matrix), axis = 0)
+        return exponent - denominator
 
     def initialize_from_data(self, transition_matrix, mean_matrix, variance_matrix):
         self.__mean_matrix = mean_matrix
@@ -72,7 +72,7 @@ class HMM:
         matches = []
 
         for feature_matrix in feature_matrices:
-            match = 0
+            match = self.__compute_gaussian_probability_log(feature_matrix[:, 0])[0]
             current_state = 0
 
             for t in range(1, feature_matrix.shape[1]):
@@ -84,6 +84,9 @@ class HMM:
             matches.append(match)
 
         return matches
+
+    def match_from_feature_matrix(self, feature_matrix):
+        return self.match_from_feature_matrices(feature_matrix)[0]
 
     def match_from_files(self, audio_files):
         if not isinstance(audio_files, list):

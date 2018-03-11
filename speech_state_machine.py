@@ -5,7 +5,7 @@ class Speech_State_Machine:
     def __init__(self):
         self.__callbacks = []
         self.__hmm_phrase_map = {}
-        self.__log_match_threshold = -10e10
+        self.__hmm_threshold_map = {}
         self.__primary_hmm = None
         self.__primary_signaled = False
 
@@ -13,12 +13,14 @@ class Speech_State_Machine:
         for callback in self.__callbacks:
             callback(speech_hmm, phrase, is_primary)
 
-    def set_primary_hmm(self, hmm, phrase):
-        self.__hmm_phrase_map[hmm] = phrase
-        self.__primary_hmm = hmm
-
-    def add_secondary_hmm(self, speech_hmm, phrase):
+    def set_primary_hmm(self, speech_hmm, phrase, match_threshold):
         self.__hmm_phrase_map[speech_hmm] = phrase
+        self.__hmm_threshold_map[speech_hmm] = match_threshold
+        self.__primary_hmm = speech_hmm
+
+    def add_secondary_hmm(self, speech_hmm, phrase, match_threshold):
+        self.__hmm_phrase_map[speech_hmm] = phrase
+        self.__hmm_threshold_map[speech_hmm] = match_threshold
 
     def add_speech_match_callback(self, callback):
         self.__callbacks.append(callback)
@@ -28,16 +30,16 @@ class Speech_State_Machine:
             return
 
         if (not self.__primary_signaled):
-            if self.__primary_hmm.match_from_feature_matrices(feature_matrix) > self.__log_match_threshold:
+            if self.__primary_hmm.match_from_feature_matrix(feature_matrix) > self.__hmm_threshold_map[self.__primary_hmm]:
                 self.__primary_signaled = True
                 self.__run_callbacks(self.__primary_hmm, self.__hmm_phrase_map[self.__primary_hmm], True)
         else:
             hmm_probability_map = {}
 
             for speech_hmm in self.__hmm_phrase_map:
-                hmm_probability_map[speech_hmm] = speech_hmm.match_from_feature_matrices(feature_matrix)
+                hmm_probability_map[speech_hmm] = speech_hmm.match_from_feature_matrix(feature_matrix)
             selected_hmm, log_probability = max(hmm_probability_map.iteritems(), key = operator.itemgetter(1))
 
-            if log_probability > self.__log_match_threshold:
+            if log_probability > self.__hmm_threshold_map[selected_hmm]:
                 self.__run_callbacks(selected_hmm, self.__hmm_phrase_map[selected_hmm], False)
                 self.__primary_signaled = False

@@ -188,9 +188,9 @@ class EM:
             g = g_matrices[k]
             z = z_matrices[k]
             for i in range(0, nstates):
-                denominator[i, k] = self.__sum_log_probabilities(g[i, 1:])
+                denominator[i, k] = self.__sum_log_probabilities(g[i, :])
                 for j in range(0, nstates):
-                    numerator[i, j, k] = self.__sum_log_probabilities(z[i, j, 1:])
+                    numerator[i, j, k] = self.__sum_log_probabilities(z[i, j, :])
 
         numerator2 = np.full((nstates, nstates), self.__log_zero)
         denominator2 = np.full(nstates, self.__log_zero)
@@ -372,16 +372,6 @@ class EM:
             if file.endswith(".wav"):
                 file_path = os.path.join(folder_path, file)
                 audio_files.append(file_path)
-
-        # feature_matrices = []
-
-        # for file in os.listdir(folder_path):
-        #     if file.endswith(".npy"):
-        #         file_path = os.path.join(folder_path, file)
-        #         feature_matrix = np.load(file_path)
-        #         feature_matrices.append(feature_matrix)
-            
-        # return self.build_hmm_from_feature_matrices(feature_matrices, nstates, show_plots)
         
         return self.build_hmm_from_files(audio_files, nstates, show_plots)
 
@@ -435,55 +425,3 @@ class EM:
             feature_matrices.append(feature_matrix)
         
         return self.build_hmm_from_feature_matrices(feature_matrices, nstates, show_plots)
-
-if __name__ == '__main__':
-    training_list = []
-
-    hmm_folder_path = "C:\Users\AkramAsylum\OneDrive\Courses\School\EE 516 - Compute Speech Processing\Assignments\Assignment 5\hmm"
-    hmm_sample_path = "C:\Users\AkramAsylum\OneDrive\Courses\School\EE 516 - Compute Speech Processing\Assignments\Assignment 5\samples"
-
-    odessa_hmm = os.path.join(hmm_folder_path, "odessa.hmm")
-    play_music_hmm = os.path.join(hmm_folder_path, "play_music.hmm")
-    stop_music_hmm = os.path.join(hmm_folder_path, "stop_music.hmm")
-    turn_on_the_lights_hmm = os.path.join(hmm_folder_path, "turn_on_the_lights.hmm")
-    turn_off_the_lights_hmm = os.path.join(hmm_folder_path, "turn_off_the_lights.hmm")
-    what_time_is_it_hmm = os.path.join(hmm_folder_path, "what_time_is_it.hmm")
-
-    garbage_samples = os.path.join(hmm_sample_path, "garbage")
-    odessa_samples = os.path.join(hmm_sample_path, "odessa")
-    play_music_samples = os.path.join(hmm_sample_path, "play_music")
-    stop_music_samples = os.path.join(hmm_sample_path, "stop_music")
-    turn_on_the_lights_samples = os.path.join(hmm_sample_path, "turn_on_the_lights")
-    turn_off_the_lights_samples = os.path.join(hmm_sample_path, "turn_off_the_lights")
-    what_time_is_it_samples = os.path.join(hmm_sample_path, "what_time_is_it")
-
-    if not os.path.exists(odessa_hmm):
-        training_list.append([odessa_samples, odessa_hmm, 6 * 2])
-    if not os.path.exists(play_music_hmm):
-        training_list.append([play_music_samples, play_music_hmm, 8 * 2])
-    if not os.path.exists(stop_music_hmm):
-        training_list.append([stop_music_samples, stop_music_hmm, 9 * 2])
-    if not os.path.exists(turn_on_the_lights_hmm):
-        training_list.append([turn_on_the_lights_samples, turn_on_the_lights_hmm, 11 * 2])
-    if not os.path.exists(turn_off_the_lights_hmm):
-        training_list.append([turn_off_the_lights_samples, turn_off_the_lights_hmm, 11 * 2])
-    if not os.path.exists(what_time_is_it_hmm):
-        training_list.append([what_time_is_it_samples, what_time_is_it_hmm, 10 * 2])
-
-    em = EM()
-    for item in training_list:
-        folder_name = os.path.split(item[0])[-1]
-        print("Training %s..." % folder_name)
-
-        speech_hmm = em.build_hmm_from_folder(item[0], item[2], False)
-        #speech_hmm.save(item[1])
-
-        good_matches = speech_hmm.match_from_folder(item[0])
-        bad_matches = speech_hmm.match_from_folder(garbage_samples)
-
-        length = min(len(good_matches), len(bad_matches))
-        for i in range(0, length):
-            print("\tGood match: %.3f, Bad match: %.3f" % (good_matches[i], bad_matches[i]))
-        print("")
-
-    print("Training complete")
