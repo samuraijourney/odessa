@@ -196,20 +196,23 @@ class Speech_Recognizer:
         self.__speech_segments.put(speech_segment)
         self.__queue_lock.release()
 
-    def __speech_matched(self, hmm, phrase, is_primary):
-        print("Holy shit we recognized: %s" % phrase)
+    def __speech_matched(self, hmm, phrase, log_match_probability, is_primary):
+        print(phrase)
 
-    def run(self):
+    def run(self, interactive = True):
         processing_thread = threading.Thread(target = self.__process_speech_segments)
-        interactive_thread = threading.Thread(target = self.__handle_interactive)
+        if interactive:
+            interactive_thread = threading.Thread(target = self.__handle_interactive)
 
         processing_thread.start()
-        interactive_thread.start()
+        if interactive:
+            interactive_thread.start()
         self.__sampler.run()
 
         self.__stop_processing = True
         processing_thread.join()
-        interactive_thread.join()
+        if interactive:
+            interactive_thread.join()
 
 if __name__ == '__main__':
     hmm_folder_path = "C:\Users\AkramAsylum\OneDrive\Courses\School\EE 516 - Compute Speech Processing\Assignments\Assignment 5\hmm"
@@ -255,4 +258,4 @@ if __name__ == '__main__':
         speech_state_machine.add_secondary_hmm(what_time_is_it_speech_hmm, "what time is it", what_time_is_it_threshold)
 
     speech_recognizer = Speech_Recognizer(speech_state_machine)
-    speech_recognizer.run()
+    speech_recognizer.run(True)

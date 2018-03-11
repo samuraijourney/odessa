@@ -295,6 +295,10 @@ class Speech_Sampler():
         if ((n2 - n1) / float(self.__fs)) < 0.25:
             return np.nan, np.nan
     
+        # Adding 0.05s padding to start and end for silence
+        n1 = n1 - 0.15 * self.__fs
+        n2 = np.min(n2 + 0.15 * self.__fs, -1)
+
         return n1, n2
     
     def __get_new_filepath(self, folder_path):
