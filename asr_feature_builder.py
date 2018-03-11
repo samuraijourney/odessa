@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.io.wavfile as wavfile
-from scipy.fftpack import dct
+from scipy.fftpack.realtransforms import dct
 
 class ASR_Feature_Builder:
 
@@ -32,9 +32,9 @@ class ASR_Feature_Builder:
             self.__filtered_spectra[window_index, i, :] = np.multiply(self.__filter_banks[i, :], self.__fft_mag[window_index, :])
             self.__filtered_spectra_sums[window_index, i] = np.sum(self.__filtered_spectra[window_index, i, :])
 
-        self.__filtered_spectra_sums_log[window_index, :] = np.log(self.__filtered_spectra_sums[window_index, :])
+        self.__filtered_spectra_sums_log[window_index, :] = np.log10(self.__filtered_spectra_sums[window_index, :])
 
-        return dct(self.__filtered_spectra_sums_log[window_index, :])
+        return dct(self.__filtered_spectra_sums_log[window_index, :], norm='ortho')
 
     def __create_filter_banks(self, freq, lower_freq, upper_freq):
         npoints = self.__nfilters + 2

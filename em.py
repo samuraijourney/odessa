@@ -68,15 +68,15 @@ class EM:
         z = np.full((nstates, nstates, nframes), self.__log_zero)
 
         g[:, 0] = a[:, 0] + b[:, 0] - self.__sum_log_probabilities(a[:, 0] + b[:, 0])
+        z[-1, -1, -1] = np.log(1)
 
         for t in range(1, nframes):
             g[:, t] = a[:, t] + b[:, t] - self.__sum_log_probabilities(a[:, t] + b[:, t])
-
             p = self.__compute_gaussian_probability_log(feature_matrix[:, t], mean_matrix, variance_matrix)
-
-            for j in range(0, nstates):
-                for i in range(0, nstates):
-                    z[i, j, t - 1] = b[j, t] + a[i, t - 1] + transition_matrix[i, j] + p[j] - a[-1, -1]
+            for i in range(0, nstates):
+                z[i, i, t - 1] = b[i, t] + a[i, t - 1] + transition_matrix[i, i] + p[i] - a[-1, -1]
+                if i != 0:
+                    z[i - 1, i, t - 1] = b[i, t] + a[i - 1, t - 1] + transition_matrix[i - 1, i] + p[i] - a[-1, -1]
 
         return g, z
 
@@ -101,8 +101,7 @@ class EM:
 
         new_initial_state_vector = self.__compute_new_initial_state_vector(a_matrices, b_matrices)
         new_transition_matrix = self.__compute_new_state_transition_matrix(g_matrices, z_matrices)
-        new_mean_matrix = self.__compute_new_mean_matrix(feature_matrices, g_matrices)
-        new_variance_matrix = self.__compute_new_variance_matrix(feature_matrices, new_mean_matrix, g_matrices)
+        new_mean_matrix, new_variance_matrix = self.__compute_new_observation(feature_matrices, g_matrices)
         data_log_likelihood = self.__compute_data_log_likelihood(a_matrices)
         
         return hmm.HMM_Parameters(hmm_parameters.get_nstates(), new_initial_state_vector, new_transition_matrix, new_mean_matrix, new_variance_matrix, data_log_likelihood)
@@ -132,11 +131,52 @@ class EM:
             for i in range(0, len(feature_matrices)):
                 feature_matrix = feature_matrices[i]
                 g = g_matrices[i]
-                numerator = numerator + np.sum(np.multiply(feature_matrix, np.exp(g[q, :])), axis = 1)
-                denominator = denominator + np.sum(np.exp(g[q, :]))
+                g_q = np.exp(g[q, :])
+                numerator = numerator + np.sum(np.multiply(feature_matrix, g_q), axis = 1)
+                denominator = denominator + np.sum(g_q)
             mean_matrix[:, q] = numerator / float(denominator)
         
         return mean_matrix
+
+    def __compute_new_observation(self, feature_matrices, g_matrices):
+        nstates = g_matrices[0].shape[0]
+        nfeatures = feature_matrices[0].shape[0]
+        mean_matrix = np.zeros((nfeatures, nstates), dtype = np.float)
+        variance_matrix = np.zeros((nfeatures, nstates), dtype = np.float)
+
+        for q in range(0, nstates):
+            denominator = 0
+
+            for i in range(0, len(feature_matrices)):
+                feature_matrix = feature_matrices[i]
+                g_matrix = g_matrices[i]
+                g_matrix_exp = np.exp(g_matrix)
+                denominator = denominator + np.sum(g_matrix_exp[q, :])
+                mean_matrix[:, q] = mean_matrix[:, q] + np.sum(np.multiply(feature_matrix, g_matrix_exp[q, :]), axis = 1)
+
+            mean_matrix[:, q] = mean_matrix[:, q] / denominator
+
+            for i in range(0, len(feature_matrices)):
+                feature_matrix = feature_matrices[i]
+                g_matrix = g_matrices[i]
+                g_matrix_exp = np.exp(g_matrix)
+                variance_matrix[:, q] = variance_matrix[:, q] + \
+                    np.sum( \
+                        np.multiply( \
+                            np.square( \
+                                feature_matrix - mean_matrix[:, q].reshape((nfeatures, 1))
+                            ), \
+                            np.tile( \
+                                g_matrix_exp[q, :], \
+                                (nfeatures, 1)
+                            ) \
+                        ), \
+                        axis = 1
+                    )
+     
+            variance_matrix[:, q] = variance_matrix[:, q] / denominator
+
+        return mean_matrix, variance_matrix
 
     def __compute_new_state_transition_matrix(self, g_matrices, z_matrices):
         nstates = g_matrices[0].shape[0]
@@ -144,7 +184,7 @@ class EM:
         numerator = np.full((nstates, nstates, nmatrices), self.__log_zero)
         denominator = np.full((nstates, nmatrices), self.__log_zero)
 
-        for k in range(0, len(g_matrices)):
+        for k in range(0, nmatrices):
             g = g_matrices[k]
             z = z_matrices[k]
             for i in range(0, nstates):
@@ -160,31 +200,30 @@ class EM:
             for j in range(0, nstates):
                 numerator2[i, j] = self.__sum_log_probabilities(numerator[i, j, :])
 
-        transition_matrix = numerator2 - denominator2.reshape((len(denominator2), 1))
-        
-        return transition_matrix
+        return numerator2 - denominator2.reshape((len(denominator2), 1))
 
     def __compute_new_variance_matrix(self, feature_matrices, new_mean_matrix, g_matrices):
         nstates = g_matrices[0].shape[0]
         nfeatures = feature_matrices[0].shape[0]
         variance_matrix = np.zeros((nfeatures, nstates), dtype = np.float)
-        numerator = np.zeros(nfeatures)
+        numerator = np.zeros(nfeatures, dtype = np.float)
         denominator = 0
 
         for q in range(0, nstates):
             for i in range(0, len(feature_matrices)):
                 feature_matrix = feature_matrices[i]
                 g = g_matrices[i]
+                g_q = np.exp(g[q, :])
                 numerator = numerator + np.sum( \
                     np.multiply( \
                         np.square( \
                             feature_matrix - new_mean_matrix[:, q].reshape((nfeatures, 1)) \
                         ), \
-                        np.exp(g[q, :]) \
+                        g_q \
                     ), \
                     axis = 1 \
                 )
-                denominator = denominator + np.sum(np.exp(g[q, :]))
+                denominator = denominator + np.sum(g_q)
             variance_matrix[:, q] = numerator / float(denominator)
         
         return variance_matrix
@@ -245,8 +284,8 @@ class EM:
         transition_matrix = np.full((nstates, nstates), self.__log_zero, dtype = np.float)
 
         for feature_matrix in feature_matrices:
-            variance_vector = np.add(variance_vector, np.var(feature_matrix, axis = 1))
-            mean_vector = np.add(mean_vector, np.mean(feature_matrix, axis = 1))    
+            variance_vector = variance_vector + np.var(feature_matrix, axis = 1)
+            mean_vector = mean_vector + np.mean(feature_matrix, axis = 1)
 
         variance_vector = np.true_divide(variance_vector, len(feature_matrices))
         mean_vector = np.true_divide(mean_vector, len(feature_matrices))
@@ -254,12 +293,10 @@ class EM:
         variance_matrix = self.__convert_vector_to_matrix(variance_vector, nstates)
         mean_matrix = self.__convert_vector_to_matrix(mean_vector, nstates)
 
-        for j in range(0, nstates):
-           mean_std = np.sqrt(variance_vector[j])
-           variance_std = mean_std
-           for i in range(0, nfeatures):
-               mean_matrix[i, j] = mean_matrix[i, j] + np.random.normal(-mean_std, mean_std, 1)
-               variance_matrix[i, j] = np.abs(variance_matrix[i, j] + np.random.normal(-variance_std, variance_std, 1))
+        for i in range(0, nfeatures):
+            mean_std = np.sqrt(variance_vector[i])
+            for j in range(0, nstates):
+                mean_matrix[i, j] = mean_matrix[i, j] + np.random.normal(0, mean_std, 1)
 
         for i in range(0, nstates - 1):
             stay_probability = np.random.uniform(0, 1, 1)
@@ -295,16 +332,16 @@ class EM:
         return results
 
     def __train_hmm(self, feature_matrices, nstates, result_queue):
-        threshold = 0.000001
+        threshold = 0.0001
         old_hmm_parameters = self.__initialize_hmm_parameters(nstates, feature_matrices)
-        delta = 1.0
+        delta = np.inf
         new_likelihood = 0.0
 
         while delta > threshold:
             new_hmm_parameters = self.__compute_new_hmm_parameters(feature_matrices, old_hmm_parameters)
             old_likelihood = old_hmm_parameters.get_data_log_likelihood()
             new_likelihood = new_hmm_parameters.get_data_log_likelihood()
-            delta = np.abs(new_likelihood - old_likelihood) / np.abs(old_likelihood)
+            delta = np.abs(new_likelihood - old_likelihood)
             old_hmm_parameters = new_hmm_parameters
 
             print("\tIteration %d - Delta: %.8f, Likelihood: %.4f" % (self.__iteration, delta, new_likelihood))
@@ -335,6 +372,16 @@ class EM:
             if file.endswith(".wav"):
                 file_path = os.path.join(folder_path, file)
                 audio_files.append(file_path)
+
+        # feature_matrices = []
+
+        # for file in os.listdir(folder_path):
+        #     if file.endswith(".npy"):
+        #         file_path = os.path.join(folder_path, file)
+        #         feature_matrix = np.load(file_path)
+        #         feature_matrices.append(feature_matrix)
+            
+        # return self.build_hmm_from_feature_matrices(feature_matrices, nstates, show_plots)
         
         return self.build_hmm_from_files(audio_files, nstates, show_plots)
 
@@ -411,17 +458,17 @@ if __name__ == '__main__':
     what_time_is_it_samples = os.path.join(hmm_sample_path, "what_time_is_it")
 
     if not os.path.exists(odessa_hmm):
-        training_list.append([odessa_samples, odessa_hmm, 6])
+        training_list.append([odessa_samples, odessa_hmm, 6 * 2])
     if not os.path.exists(play_music_hmm):
-        training_list.append([play_music_samples, play_music_hmm, 8])
+        training_list.append([play_music_samples, play_music_hmm, 8 * 2])
     if not os.path.exists(stop_music_hmm):
-        training_list.append([stop_music_samples, stop_music_hmm, 9])
+        training_list.append([stop_music_samples, stop_music_hmm, 9 * 2])
     if not os.path.exists(turn_on_the_lights_hmm):
-        training_list.append([turn_on_the_lights_samples, turn_on_the_lights_hmm, 11])
+        training_list.append([turn_on_the_lights_samples, turn_on_the_lights_hmm, 11 * 2])
     if not os.path.exists(turn_off_the_lights_hmm):
-        training_list.append([turn_off_the_lights_samples, turn_off_the_lights_hmm, 11])
+        training_list.append([turn_off_the_lights_samples, turn_off_the_lights_hmm, 11 * 2])
     if not os.path.exists(what_time_is_it_hmm):
-        training_list.append([what_time_is_it_samples, what_time_is_it_hmm, 10])
+        training_list.append([what_time_is_it_samples, what_time_is_it_hmm, 10 * 2])
 
     em = EM()
     for item in training_list:
@@ -429,7 +476,7 @@ if __name__ == '__main__':
         print("Training %s..." % folder_name)
 
         speech_hmm = em.build_hmm_from_folder(item[0], item[2], False)
-        speech_hmm.save(item[1])
+        #speech_hmm.save(item[1])
 
         good_matches = speech_hmm.match_from_folder(item[0])
         bad_matches = speech_hmm.match_from_folder(garbage_samples)
