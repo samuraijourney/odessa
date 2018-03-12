@@ -490,7 +490,7 @@ class Speech_Sampler():
     def run(self): 
         stream = sd.InputStream(channels=1, samplerate=self.__fs, callback=self.__audio_callback)
         callback_thread = Thread(target = self.__process_speech_segments)
-
+        
         with stream:
             callback_thread.start()
             while True:

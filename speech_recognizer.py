@@ -6,6 +6,7 @@ import hmm
 import multiprocessing
 import numpy as np
 import os
+import sounddevice as sd
 import threading
 import time
 
@@ -162,6 +163,8 @@ class Speech_Recognizer:
             if speech_segment is None:
                 continue
 
+            self.__speech_segment = speech_segment
+
             feature_matrix = self.__feature_builder.compute_features_for_signal( \
                 speech_segment * np.iinfo(np.int16).max, \
                 self.__fs, \
@@ -197,7 +200,8 @@ class Speech_Recognizer:
         self.__queue_lock.release()
 
     def __speech_matched(self, hmm, phrase, log_match_probability, is_primary):
-        print(phrase)
+        print("%s was said" % phrase)
+        sd.play(self.__speech_segment, self.__fs, blocking = True)
 
     def run(self, interactive = True):
         processing_thread = threading.Thread(target = self.__process_speech_segments)
@@ -224,12 +228,12 @@ if __name__ == '__main__':
     turn_off_the_lights_hmm = os.path.join(hmm_folder_path, "turn_off_the_lights.hmm")
     what_time_is_it_hmm = os.path.join(hmm_folder_path, "what_time_is_it.hmm")
 
-    odessa_threshold = -900.0
-    play_music_threshold = -900.0
-    stop_music_threshold = -1100.0
-    turn_on_the_lights_threshold = -1100.0
-    turn_off_the_lights_threshold = -1100.0
-    what_time_is_it_threshold = -1000.0
+    odessa_threshold = -1080.0
+    play_music_threshold = -1120.0
+    stop_music_threshold = -1560.0
+    turn_on_the_lights_threshold = -1270.0
+    turn_off_the_lights_threshold = -1380.0
+    what_time_is_it_threshold = -860.0
 
     speech_state_machine = Speech_State_Machine()
     if os.path.exists(odessa_hmm):
@@ -258,4 +262,4 @@ if __name__ == '__main__':
         speech_state_machine.add_secondary_hmm(what_time_is_it_speech_hmm, "what time is it", what_time_is_it_threshold)
 
     speech_recognizer = Speech_Recognizer(speech_state_machine)
-    speech_recognizer.run(True)
+    speech_recognizer.run(False)

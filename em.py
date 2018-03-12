@@ -232,7 +232,7 @@ class EM:
         return np.transpose(np.tile(vector, (ncolumns, 1)))
 
     def __create_plots(self):
-        self.__fig, axes = plt.subplots(5, 1)
+        self.__fig, axes = plt.subplots(3, 1)
 
         axes[0].set_title("Alpha matrix")
         axes[0].xaxis.grid(True)
@@ -257,22 +257,6 @@ class EM:
         axes[2].grid(linewidth = 3)
         self.__g_plot= axes[2]
         axes[2].imshow(self.__g, aspect='auto')
-
-        axes[3].set_title("Gamma sum vector")
-        axes[3].xaxis.grid(True)
-        axes[3].yaxis.grid(True)
-        axes[3].set_xlabel("frames")
-        axes[3].grid(linewidth = 3)
-        self.__g_sum_plot= axes[3]
-        axes[3].imshow([np.sum(np.exp(self.__g), axis = 0)], aspect='auto')
-
-        axes[4].set_title("Alpha/Beta sum vector")
-        axes[4].xaxis.grid(True)
-        axes[4].yaxis.grid(True)
-        axes[4].set_xlabel("frames")
-        axes[4].grid(linewidth = 3)
-        self.__ab_product_sum_plot = axes[4]
-        axes[4].imshow([self.__sum_log_probability_matrix(self.__a + self.__b)], aspect='auto')
         
         self.__fig.tight_layout(pad = 0)
         
@@ -353,14 +337,10 @@ class EM:
         self.__a_plot.set_title("Alpha matrix (iteration = %d)" % self.__iteration)
         self.__b_plot.set_title("Beta matrix (iteration = %d)" % self.__iteration)
         self.__g_plot.set_title("Gamma matrix (iteration = %d)" % self.__iteration)
-        self.__g_sum_plot.set_title("Gamma sum vector (iteration = %d)" % self.__iteration)
-        self.__ab_product_sum_plot.set_title("Alpha/beta sum vector (iteration = %d)" % self.__iteration)
 
         self.__a_plot.imshow(self.__a, aspect='auto')
         self.__b_plot.imshow(self.__b, aspect='auto')
         self.__g_plot.imshow(np.exp(self.__g), aspect='auto')
-        self.__g_sum_plot.imshow([np.sum(np.exp(self.__g), axis = 0)], aspect='auto')
-        self.__ab_product_sum_plot.imshow([self.__sum_log_probability_matrix(self.__a + self.__b)], aspect='auto')
 
         return None
 

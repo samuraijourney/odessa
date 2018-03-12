@@ -79,23 +79,26 @@ if __name__ == '__main__':
     if not os.path.exists(what_time_is_it_hmm):
         training_list.append([what_time_is_it_validation_samples, what_time_is_it_samples, what_time_is_it_hmm, 10])
 
-    csv.write(["Trainee", "# of States", "Iteration", "Test Set", "Max", "Min", "Mean", "Std", "Cutoff"])
+    csv.write(["Trainee", "# of States", "Iteration", "Test Set", "Max", "Min", "Mean", "Std", "5%/95% Cutoff", "10%/90% Cutoff", "15%/85% Cutoff", "20%/80% Cutoff"])
 
     em = EM()
     for item in training_list:
-        for q in range(4, 40, 2):
-            for iteration in range(0, 3):
-                percentile_cutoff = 5
+        for q in range(6, 40, 4):
+            for iteration in range(0, 2):
                 folder_name = os.path.split(item[1])[-1]
-                print("Training %s..." % folder_name)
-
-                speech_hmm = em.build_hmm_from_folder(item[1], q, False)
-                #speech_hmm.save(item[2])
+                hmm_path = "%s_%d_%d.hmm" % (os.path.splitext(item[2])[0], q, iteration)
+                if os.path.exists(hmm_path):
+                    print("Skipping already trained %s for q=%d and i=%d..." % (folder_name, q, iteration))
+                    continue
+                print("Training %s for q=%d and i=%d..." % (folder_name, q, iteration))
+                
+                speech_hmm = em.build_hmm_from_folder(item[1], q, max_iterations = 250, show_plots = False, convergence_threshold = 1)
+                speech_hmm.save(hmm_path)
 
                 matches = speech_hmm.match_from_folder(item[1])
                 for i in range(0, len(matches)):
                     print("\ttraining match: %.3f" % matches[i])
-                metrics = [max(matches), min(matches), np.mean(matches), np.std(matches), np.percentile(matches, percentile_cutoff)]
+                metrics = [max(matches), min(matches), np.mean(matches), np.std(matches), np.percentile(matches, 5), np.percentile(matches, 10), np.percentile(matches, 15), np.percentile(matches, 20)]
                 csv.write([folder_name, q, iteration, "training"] + metrics)
                 print("\tmax: %.3f, min: %.3f, mean: %.3f, std: %.3f, cutoff: %.3f" % (metrics[0], metrics[1], metrics[2], metrics[3], metrics[4]))
                 
@@ -104,7 +107,7 @@ if __name__ == '__main__':
                 matches = speech_hmm.match_from_folder(item[0])
                 for i in range(0, len(matches)):
                     print("\tvalidation match: %.3f" % matches[i])
-                metrics = [max(matches), min(matches), np.mean(matches), np.std(matches), np.percentile(matches, percentile_cutoff)]
+                metrics = [max(matches), min(matches), np.mean(matches), np.std(matches), np.percentile(matches, 5), np.percentile(matches, 10), np.percentile(matches, 15), np.percentile(matches, 20)]
                 csv.write([folder_name, q, iteration, "validation"] + metrics)
                 print("\tmax: %.3f, min: %.3f, mean: %.3f, std: %.3f, cutoff: %.3f" % (metrics[0], metrics[1], metrics[2], metrics[3], metrics[4]))
 
@@ -114,7 +117,7 @@ if __name__ == '__main__':
                     matches = speech_hmm.match_from_folder(garbage_samples)
                     for i in range(0, len(matches)):
                         print("\tgarbage match: %.3f" % matches[i])
-                    metrics = [max(matches), min(matches), np.mean(matches), np.std(matches), np.percentile(matches, percentile_cutoff)]
+                    metrics = [max(matches), min(matches), np.mean(matches), np.std(matches), np.percentile(matches, 95), np.percentile(matches, 90), np.percentile(matches, 85), np.percentile(matches, 80)]
                     csv.write([folder_name, q, iteration, "garbage"] + metrics)
                     print("\tmax: %.3f, min: %.3f, mean: %.3f, std: %.3f" % (metrics[0], metrics[1], metrics[2], metrics[3]))
                 
@@ -124,7 +127,7 @@ if __name__ == '__main__':
                     matches = speech_hmm.match_from_folder(odessa_samples)
                     for i in range(0, len(matches)):
                         print("\todessa match: %.3f" % matches[i])
-                    metrics = [max(matches), min(matches), np.mean(matches), np.std(matches), np.percentile(matches, percentile_cutoff)]
+                    metrics = [max(matches), min(matches), np.mean(matches), np.std(matches), np.percentile(matches, 95), np.percentile(matches, 90), np.percentile(matches, 85), np.percentile(matches, 80)]
                     csv.write([folder_name, q, iteration, "odessa"] + metrics)
                     print("\tmax: %.3f, min: %.3f, mean: %.3f, std: %.3f" % (metrics[0], metrics[1], metrics[2], metrics[3]))
                 
@@ -134,7 +137,7 @@ if __name__ == '__main__':
                     matches = speech_hmm.match_from_folder(play_music_samples)
                     for i in range(0, len(matches)):
                         print("\tplay music match: %.3f" % matches[i])
-                    metrics = [max(matches), min(matches), np.mean(matches), np.std(matches), np.percentile(matches, percentile_cutoff)]
+                    metrics = [max(matches), min(matches), np.mean(matches), np.std(matches), np.percentile(matches, 95), np.percentile(matches, 90), np.percentile(matches, 85), np.percentile(matches, 80)]
                     csv.write([folder_name, q, iteration, "play music"] + metrics)
                     print("\tmax: %.3f, min: %.3f, mean: %.3f, std: %.3f" % (metrics[0], metrics[1], metrics[2], metrics[3]))
                 
@@ -144,7 +147,7 @@ if __name__ == '__main__':
                     matches = speech_hmm.match_from_folder(stop_music_samples)
                     for i in range(0, len(matches)):
                         print("\tstop music match: %.3f" % matches[i])
-                    metrics = [max(matches), min(matches), np.mean(matches), np.std(matches), np.percentile(matches, percentile_cutoff)]
+                    metrics = [max(matches), min(matches), np.mean(matches), np.std(matches), np.percentile(matches, 95), np.percentile(matches, 90), np.percentile(matches, 85), np.percentile(matches, 80)]
                     csv.write([folder_name, q, iteration, "stop music"] + metrics)
                     print("\tmax: %.3f, min: %.3f, mean: %.3f, std: %.3f" % (metrics[0], metrics[1], metrics[2], metrics[3]))
                 
@@ -154,7 +157,7 @@ if __name__ == '__main__':
                     matches = speech_hmm.match_from_folder(turn_on_the_lights_samples)
                     for i in range(0, len(matches)):
                         print("\tturn on the lights match: %.3f" % matches[i])
-                    metrics = [max(matches), min(matches), np.mean(matches), np.std(matches), np.percentile(matches, percentile_cutoff)]
+                    metrics = [max(matches), min(matches), np.mean(matches), np.std(matches), np.percentile(matches, 95), np.percentile(matches, 90), np.percentile(matches, 85), np.percentile(matches, 80)]
                     csv.write([folder_name, q, iteration, "turn on the lights"] + metrics)
                     print("\tmax: %.3f, min: %.3f, mean: %.3f, std: %.3f" % (metrics[0], metrics[1], metrics[2], metrics[3]))
                 
@@ -164,7 +167,7 @@ if __name__ == '__main__':
                     matches = speech_hmm.match_from_folder(turn_off_the_lights_samples)
                     for i in range(0, len(matches)):
                         print("\tturn off the lights match: %.3f" % matches[i])
-                    metrics = [max(matches), min(matches), np.mean(matches), np.std(matches), np.percentile(matches, percentile_cutoff)]
+                    metrics = [max(matches), min(matches), np.mean(matches), np.std(matches), np.percentile(matches, 95), np.percentile(matches, 90), np.percentile(matches, 85), np.percentile(matches, 80)]
                     csv.write([folder_name, q, iteration, "turn off the lights"] + metrics)
                     print("\tmax: %.3f, min: %.3f, mean: %.3f, std: %.3f" % (metrics[0], metrics[1], metrics[2], metrics[3]))
                 
@@ -174,7 +177,7 @@ if __name__ == '__main__':
                     matches = speech_hmm.match_from_folder(what_time_is_it_samples)
                     for i in range(0, len(matches)):
                         print("\twhat time is it match: %.3f" % matches[i])
-                    metrics = [max(matches), min(matches), np.mean(matches), np.std(matches), np.percentile(matches, percentile_cutoff)]
+                    metrics = [max(matches), min(matches), np.mean(matches), np.std(matches), np.percentile(matches, 95), np.percentile(matches, 90), np.percentile(matches, 85), np.percentile(matches, 80)]
                     csv.write([folder_name, q, iteration, "what time is it"] + metrics)
                     print("\tmax: %.3f, min: %.3f, mean: %.3f, std: %.3f" % (metrics[0], metrics[1], metrics[2], metrics[3]))
                 
