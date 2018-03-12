@@ -331,13 +331,12 @@ class EM:
             results[i] = self.__sum_log_probabilities(m[:, i])
         return results
 
-    def __train_hmm(self, feature_matrices, nstates, result_queue):
-        threshold = 0.0001
+    def __train_hmm(self, feature_matrices, nstates, result_queue, max_iterations, convergence_threshold):
         old_hmm_parameters = self.__initialize_hmm_parameters(nstates, feature_matrices)
         delta = np.inf
         new_likelihood = 0.0
 
-        while delta > threshold:
+        while (delta > convergence_threshold) and (self.__iteration < max_iterations):
             new_hmm_parameters = self.__compute_new_hmm_parameters(feature_matrices, old_hmm_parameters)
             old_likelihood = old_hmm_parameters.get_data_log_likelihood()
             new_likelihood = new_hmm_parameters.get_data_log_likelihood()
@@ -365,7 +364,7 @@ class EM:
 
         return None
 
-    def build_hmm_from_folder(self, folder_path, nstates, show_plots = False):
+    def build_hmm_from_folder(self, folder_path, nstates, max_iterations = 200, convergence_threshold = 0.001, show_plots = False):
         audio_files = []
 
         for file in os.listdir(folder_path):
@@ -373,9 +372,9 @@ class EM:
                 file_path = os.path.join(folder_path, file)
                 audio_files.append(file_path)
         
-        return self.build_hmm_from_files(audio_files, nstates, show_plots)
+        return self.build_hmm_from_files(audio_files, nstates, max_iterations, convergence_threshold, show_plots)
 
-    def build_hmm_from_files(self, audio_files, nstates, show_plots = False):
+    def build_hmm_from_files(self, audio_files, nstates, max_iterations = 200, convergence_threshold = 0.001, show_plots = False):
         signals = []
         fs = -1
 
@@ -383,9 +382,9 @@ class EM:
             fs, s = wavfile.read(audio_file, 'rb')
             signals.append(s)
         
-        return self.build_hmm_from_signals(signals, fs, nstates, show_plots)
+        return self.build_hmm_from_signals(signals, fs, nstates, max_iterations, convergence_threshold, show_plots)
 
-    def build_hmm_from_feature_matrices(self, feature_matrices, nstates, show_plots = False):
+    def build_hmm_from_feature_matrices(self, feature_matrices, nstates, max_iterations = 200, convergence_threshold = 0.001, show_plots = False):
         self.__a = np.full((nstates, feature_matrices[0].shape[1]), self.__log_zero)
         self.__b = np.full(self.__a.shape, self.__log_zero)
         self.__g = np.full(self.__a.shape, self.__log_zero)
@@ -396,7 +395,7 @@ class EM:
             self.__animation = animation.FuncAnimation(self.__fig, self.__update_plots, interval = 1000, blit = False, repeat = False)
 
         result = Queue.Queue()
-        training_thread = Thread(target = self.__train_hmm, args = [feature_matrices, nstates, result])
+        training_thread = Thread(target = self.__train_hmm, args = [feature_matrices, nstates, result, max_iterations, convergence_threshold])
         training_thread.start()
 
         if show_plots:
@@ -409,7 +408,7 @@ class EM:
 
         return new_hmm
 
-    def build_hmm_from_signals(self, signals, fs, nstates, show_plots = False):
+    def build_hmm_from_signals(self, signals, fs, nstates, max_iterations = 200, convergence_threshold = 0.001, show_plots = False):
         feature_matrices = []
 
         for s in signals:
@@ -424,4 +423,4 @@ class EM:
 
             feature_matrices.append(feature_matrix)
         
-        return self.build_hmm_from_feature_matrices(feature_matrices, nstates, show_plots)
+        return self.build_hmm_from_feature_matrices(feature_matrices, nstates, max_iterations, convergence_threshold, show_plots)
