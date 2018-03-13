@@ -98,7 +98,7 @@ class Speech_Sampler():
 
         # Check for speech  
         if (self.__audio_frame_count >= self.__silence_threshold_frame_size) and (np.mod(self.__audio_frame_count, 5 * shift) == 0):        
-            index = max(-int(1.5 * self.__fs), self.__last_speech_detection_index)
+            index = max(-int(3 * self.__fs), self.__last_speech_detection_index)
             energies = self.__energies[index:]
             zero_crossings = self.__zero_crossings[index:]
             energy_thresholds = self.__calculate_energy_threshold(energies)
@@ -299,7 +299,7 @@ class Speech_Sampler():
         n1 = n1 - 0.15 * self.__fs
         n2 = np.min(n2 + 0.15 * self.__fs, -1)
 
-        return n1, n2
+        return int(n1), int(n2)
     
     def __get_new_filepath(self, folder_path):
         i = 0
@@ -487,20 +487,24 @@ class Speech_Sampler():
             self.__animation.event_source.start()
             self.__pause = False
 
-    def run(self): 
+    def run(self, show_plot = True): 
+        sd.default.device["input"] = "Bose QuietComfort 35 H, MME"
         stream = sd.InputStream(channels=1, samplerate=self.__fs, callback=self.__audio_callback)
         callback_thread = Thread(target = self.__process_speech_segments)
         
         with stream:
             callback_thread.start()
             while True:
-                self.__create_plots()
+                if show_plot:
+                    self.__create_plots()
 
-                # Need reference to animation otherwise garbage collector removes it...
-                self.__animation = animation.FuncAnimation(self.__fig, self.__update_plots, interval = self.__data_update_interval * 1000, blit = True, repeat = False)
-                plt.show()
-                self.__pause = False
-        
+                    # Need reference to animation otherwise garbage collector removes it...
+                    self.__animation = animation.FuncAnimation(self.__fig, self.__update_plots, interval = self.__data_update_interval * 1000, blit = True, repeat = False)
+                    plt.show()
+                    self.__pause = False
+                else:
+                    time.sleep(1)
+                
         self.__stop_processing = True
         callback_thread.join()
 

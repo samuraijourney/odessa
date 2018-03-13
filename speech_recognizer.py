@@ -1,4 +1,5 @@
 from asr_feature_builder import ASR_Feature_Builder
+from pygame import mixer
 from Queue import LifoQueue
 from speech_sampler import Speech_Sampler
 from speech_state_machine import Speech_State_Machine
@@ -9,6 +10,7 @@ import os
 import sounddevice as sd
 import threading
 import time
+import win32com.client as wincl
 
 np.warnings.filterwarnings('ignore')
 
@@ -70,6 +72,7 @@ class Speech_Recognizer:
         self.__feature_builder = ASR_Feature_Builder()
 
         # Processing
+        self.__ignore_sample = False
         self.__max_queue_size = 10
         self.__pool = multiprocessing.Pool()
         self.__process_sleep_time = 0.025 # seconds
@@ -82,7 +85,8 @@ class Speech_Recognizer:
         self.__feature_builder.set_plot_blocking(True)
         self.__sampler.add_sample_callback(self.__queue_speech_segment)
         self.__sampler.hide_spectrogram_plot()
-        self.__speech_state_machine.add_speech_match_callback(self.__speech_matched)
+        self.__sampler.hide_zero_crossing_plot()
+        self.__sampler.hide_energy_plot()
 
     def __empty_speech_segment_queue(self):
         self.__queue_lock.acquire(True)
@@ -163,10 +167,8 @@ class Speech_Recognizer:
             if speech_segment is None:
                 continue
 
-            self.__speech_segment = speech_segment
-
             feature_matrix = self.__feature_builder.compute_features_for_signal( \
-                speech_segment * np.iinfo(np.int16).max, \
+                np.round(speech_segment * np.iinfo(np.int16).max).astype(np.int16), \
                 self.__fs, \
                 self.__feature_nfilters, \
                 self.__feature_window_duration, \
@@ -174,7 +176,9 @@ class Speech_Recognizer:
                 self.__feature_radius, \
                 self.__feature_nfilters_keep)
 
+            self.__ignore_sample = True
             self.__speech_state_machine.update(feature_matrix)
+            self.__ignore_sample = False
 
             plot_options = ASR_Feature_Builder_Plot_Options( \
                     self.__feature_builder, \
@@ -185,6 +189,8 @@ class Speech_Recognizer:
             self.__pool.map(asr_feature_builder_plot, [plot_options])
 
     def __queue_speech_segment(self, speech_segment):
+        if self.__ignore_sample:
+            return
         self.__queue_lock.acquire(True)
         if self.__speech_segments.qsize() == self.__max_queue_size:
             temp_queue = LifoQueue()
@@ -199,11 +205,9 @@ class Speech_Recognizer:
         self.__speech_segments.put(speech_segment)
         self.__queue_lock.release()
 
-    def __speech_matched(self, hmm, phrase, log_match_probability, is_primary):
-        print("%s was said" % phrase)
-        sd.play(self.__speech_segment, self.__fs, blocking = True)
-
     def run(self, interactive = True):
+        sd.default.device["output"] = "Speaker/HP (Realtek High Defini, MME"
+
         processing_thread = threading.Thread(target = self.__process_speech_segments)
         if interactive:
             interactive_thread = threading.Thread(target = self.__handle_interactive)
@@ -211,15 +215,34 @@ class Speech_Recognizer:
         processing_thread.start()
         if interactive:
             interactive_thread.start()
-        self.__sampler.run()
+        else:
+            print("Speak to me oh mighty user...")
+        self.__sampler.run(True)
 
         self.__stop_processing = True
         processing_thread.join()
         if interactive:
             interactive_thread.join()
 
+
+
+speech_response_map = {}
+
+def speech_matched(hmm, phrase, log_match_probability, is_primary):
+    print(phrase)
+    speaker.Speak(speech_response_map[phrase])
+    if phrase == "play music":
+        mixer.music.load("country.mp3")
+        mixer.music.play()
+        while mixer.music.get_busy():
+            time.sleep(0.1)
+        time.sleep(0.2)
+        speaker.Speak("lol J K")
+
 if __name__ == '__main__':
-    hmm_folder_path = "C:\Users\AkramAsylum\OneDrive\Courses\School\EE 516 - Compute Speech Processing\Assignments\Assignment 5\hmm"
+    os.system('cls')
+
+    hmm_folder_path = os.path.join(os.path.dirname(__file__), "hmm")
 
     odessa_hmm = os.path.join(hmm_folder_path, "odessa.hmm")
     play_music_hmm = os.path.join(hmm_folder_path, "play_music.hmm")
@@ -228,38 +251,54 @@ if __name__ == '__main__':
     turn_off_the_lights_hmm = os.path.join(hmm_folder_path, "turn_off_the_lights.hmm")
     what_time_is_it_hmm = os.path.join(hmm_folder_path, "what_time_is_it.hmm")
 
-    odessa_threshold = -1080.0
-    play_music_threshold = -1120.0
-    stop_music_threshold = -1560.0
-    turn_on_the_lights_threshold = -1270.0
-    turn_off_the_lights_threshold = -1380.0
-    what_time_is_it_threshold = -860.0
+    odessa_threshold = -1500.0
+    play_music_threshold = -1400.0
+    stop_music_threshold = -1600.0
+    turn_on_the_lights_threshold = -1800.0
+    turn_off_the_lights_threshold = -2000.0
+    what_time_is_it_threshold = -2500.0
+
+    play_music_threshold = -3000
+    stop_music_threshold = -3000
+    turn_on_the_lights_threshold = -3000
+    turn_off_the_lights_threshold = -3000
+    what_time_is_it_threshold = -3000
 
     speech_state_machine = Speech_State_Machine()
     if os.path.exists(odessa_hmm):
         odessa_speech_hmm = hmm.HMM()
         odessa_speech_hmm.initialize_from_file(odessa_hmm)
         speech_state_machine.set_primary_hmm(odessa_speech_hmm, "odessa", odessa_threshold)
+        speech_response_map["odessa"] = "what..."
     if os.path.exists(play_music_hmm):
         play_music_speech_hmm = hmm.HMM()
         play_music_speech_hmm.initialize_from_file(play_music_hmm)
         speech_state_machine.add_secondary_hmm(play_music_speech_hmm, "play music", play_music_threshold)
+        speech_response_map["play music"] = "fine, but I only do country"
     if os.path.exists(stop_music_hmm):
         stop_music_speech_hmm = hmm.HMM()
         stop_music_speech_hmm.initialize_from_file(stop_music_hmm)
         speech_state_machine.add_secondary_hmm(stop_music_speech_hmm, "stop music", stop_music_threshold)
+        speech_response_map["stop music"] = "stop your own music"
     if os.path.exists(turn_on_the_lights_hmm):
         turn_on_the_lights_speech_hmm = hmm.HMM()
         turn_on_the_lights_speech_hmm.initialize_from_file(turn_on_the_lights_hmm)
         speech_state_machine.add_secondary_hmm(turn_on_the_lights_speech_hmm, "turn on the lights", turn_on_the_lights_threshold)
+        speech_response_map["turn on the lights"] = "I will turn on nothing"
     if os.path.exists(turn_off_the_lights_hmm):
         turn_off_the_lights_speech_hmm = hmm.HMM()
         turn_off_the_lights_speech_hmm.initialize_from_file(turn_off_the_lights_hmm)
         speech_state_machine.add_secondary_hmm(turn_off_the_lights_speech_hmm, "turn off the lights", turn_off_the_lights_threshold)
+        speech_response_map["turn off the lights"] = "can't turn it off if I didn't turn it on"
     if os.path.exists(what_time_is_it_hmm):
         what_time_is_it_speech_hmm = hmm.HMM()
         what_time_is_it_speech_hmm.initialize_from_file(what_time_is_it_hmm)
         speech_state_machine.add_secondary_hmm(what_time_is_it_speech_hmm, "what time is it", what_time_is_it_threshold)
+        speech_response_map["what time is it"] = "clearly the right answer is hammer time"
+
+    speech_state_machine.add_speech_match_callback(speech_matched)
+    speaker = wincl.Dispatch("SAPI.SpVoice")
+    mixer.init()
 
     speech_recognizer = Speech_Recognizer(speech_state_machine)
     speech_recognizer.run(False)
