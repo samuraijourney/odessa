@@ -7,6 +7,7 @@ import hmm
 import multiprocessing
 import numpy as np
 import os
+import socket
 import sounddevice as sd
 import threading
 import time
@@ -85,8 +86,6 @@ class Speech_Recognizer:
         self.__feature_builder.set_plot_blocking(True)
         self.__sampler.add_sample_callback(self.__queue_speech_segment)
         self.__sampler.hide_spectrogram_plot()
-        self.__sampler.hide_zero_crossing_plot()
-        self.__sampler.hide_energy_plot()
 
     def __empty_speech_segment_queue(self):
         self.__queue_lock.acquire(True)
@@ -206,7 +205,10 @@ class Speech_Recognizer:
         self.__queue_lock.release()
 
     def run(self, interactive = True):
-        sd.default.device["output"] = "Speaker/HP (Realtek High Defini, MME"
+        if socket.gethostname() == "DESKTOP-NR96827":
+            sd.default.device["output"] = "Speakers (High Definition Audio, MME"
+        else:
+            sd.default.device["output"] = "Speaker/HP (Realtek High Defini, MME"
 
         processing_thread = threading.Thread(target = self.__process_speech_segments)
         if interactive:
@@ -231,6 +233,8 @@ speech_response_map = {}
 def speech_matched(hmm, phrase, log_match_probability, is_primary):
     print(phrase)
     speaker.Speak(speech_response_map[phrase])
+    if is_primary:
+        time.sleep(0.5)
     if phrase == "play music":
         mixer.music.load("country.mp3")
         mixer.music.play()
@@ -238,6 +242,12 @@ def speech_matched(hmm, phrase, log_match_probability, is_primary):
             time.sleep(0.1)
         time.sleep(0.2)
         speaker.Speak("lol J K")
+    elif phrase == "what time is it":
+        mixer.music.load("hammer.mp3")
+        mixer.music.play()
+        while mixer.music.get_busy():
+            time.sleep(0.1)
+
 
 if __name__ == '__main__':
     os.system('cls')
@@ -258,11 +268,11 @@ if __name__ == '__main__':
     turn_off_the_lights_threshold = -2000.0
     what_time_is_it_threshold = -2500.0
 
-    play_music_threshold = -3000
-    stop_music_threshold = -3000
-    turn_on_the_lights_threshold = -3000
-    turn_off_the_lights_threshold = -3000
-    what_time_is_it_threshold = -3000
+    play_music_threshold = -2200
+    stop_music_threshold = -2200
+    turn_on_the_lights_threshold = -2200
+    turn_off_the_lights_threshold = -2200
+    what_time_is_it_threshold = -2200
 
     speech_state_machine = Speech_State_Machine()
     if os.path.exists(odessa_hmm):
@@ -294,7 +304,7 @@ if __name__ == '__main__':
         what_time_is_it_speech_hmm = hmm.HMM()
         what_time_is_it_speech_hmm.initialize_from_file(what_time_is_it_hmm)
         speech_state_machine.add_secondary_hmm(what_time_is_it_speech_hmm, "what time is it", what_time_is_it_threshold)
-        speech_response_map["what time is it"] = "clearly the right answer is hammer time"
+        speech_response_map["what time is it"] = "clearly the right answer is"
 
     speech_state_machine.add_speech_match_callback(speech_matched)
     speaker = wincl.Dispatch("SAPI.SpVoice")

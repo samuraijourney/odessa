@@ -48,8 +48,8 @@ class Speech_State_Machine:
                 print("\t%s [%.3f]" % (self.__hmm_phrase_map[speech_hmm], hmm_probability_map[speech_hmm]))
             selected_hmm, match = max(hmm_probability_map.iteritems(), key = operator.itemgetter(1))
 
-            #if match > self.__hmm_threshold_map[selected_hmm]:
-            self.__run_callbacks(selected_hmm, self.__hmm_phrase_map[selected_hmm], match, False)
-            self.__primary_signaled = False
+            if match > self.__hmm_threshold_map[selected_hmm]:
+                self.__run_callbacks(selected_hmm, self.__hmm_phrase_map[selected_hmm], match, False)
+                self.__primary_signaled = False
         
         #print("-------------------------------------------")

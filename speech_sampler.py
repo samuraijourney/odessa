@@ -98,7 +98,7 @@ class Speech_Sampler():
 
         # Check for speech  
         if (self.__audio_frame_count >= self.__silence_threshold_frame_size) and (np.mod(self.__audio_frame_count, 5 * shift) == 0):        
-            index = max(-int(3 * self.__fs), self.__last_speech_detection_index)
+            index = max(-int(1.5 * self.__fs), self.__last_speech_detection_index)
             energies = self.__energies[index:]
             zero_crossings = self.__zero_crossings[index:]
             energy_thresholds = self.__calculate_energy_threshold(energies)
@@ -203,7 +203,7 @@ class Speech_Sampler():
 
         # Energy is really low, probably not speech, or they're whispering in which case they better learn to speak up...
         if np.max(energies) < 0.5:
-            return np.nan, np.nan
+           return np.nan, np.nan
 
         while index > -max_distance:
 
@@ -274,28 +274,28 @@ class Speech_Sampler():
         zc_end_count = 0
 
         # Look for fricatives
-        for i in range(0, fricative_lookahead):
-            zc_start = np.max(np.sign(zero_crossings[index_start - i] - zero_crossing_threshold), 0)
-            zc_start_count = zc_start_count + zc_start
-            zc_end = np.max(np.sign(zero_crossings[index_end + i] - zero_crossing_threshold), 0)
-            zc_end_count = zc_end_count + zc_end
+        # for i in range(0, fricative_lookahead):
+        #     zc_start = np.max(np.sign(zero_crossings[index_start - i] - zero_crossing_threshold), 0)
+        #     zc_start_count = zc_start_count + zc_start
+        #     zc_end = np.max(np.sign(zero_crossings[index_end + i] - zero_crossing_threshold), 0)
+        #     zc_end_count = zc_end_count + zc_end
 
-            # Move N1 to account for trailing fricatives
-            if (zc_start == 1) and (zc_start_count >= 3):
-                n1 = index_start - i
-                self.__energies_min_thresholds[n1] = energy_min_threshold
-                self.__energies_max_thresholds[n1] = energy_max_threshold
-            # Move N2 to account for leading fricatives
-            if (zc_end == 1) and (zc_end_count >= 3):
-                n2 = index_end + i
-                self.__energies_min_thresholds[n2] = energy_min_threshold
-                self.__energies_max_thresholds[n2] = energy_max_threshold
+        #     # Move N1 to account for trailing fricatives
+        #     if (zc_start == 1) and (zc_start_count >= 3):
+        #         n1 = index_start - i
+        #         self.__energies_min_thresholds[n1] = energy_min_threshold
+        #         self.__energies_max_thresholds[n1] = energy_max_threshold
+        #     # Move N2 to account for leading fricatives
+        #     if (zc_end == 1) and (zc_end_count >= 3):
+        #         n2 = index_end + i
+        #         self.__energies_min_thresholds[n2] = energy_min_threshold
+        #         self.__energies_max_thresholds[n2] = energy_max_threshold
 
         # Phrase is to short, most likely not speech
         if ((n2 - n1) / float(self.__fs)) < 0.25:
             return np.nan, np.nan
     
-        # Adding 0.05s padding to start and end for silence
+        # Adding 0.15s padding to start and end for silence
         n1 = n1 - 0.15 * self.__fs
         n2 = np.min(n2 + 0.15 * self.__fs, -1)
 
@@ -488,7 +488,7 @@ class Speech_Sampler():
             self.__pause = False
 
     def run(self, show_plot = True): 
-        sd.default.device["input"] = "Bose QuietComfort 35 H, MME"
+        sd.default.device["input"] = "Headset (Bose QuietComfort 35 H, MME"
         stream = sd.InputStream(channels=1, samplerate=self.__fs, callback=self.__audio_callback)
         callback_thread = Thread(target = self.__process_speech_segments)
         

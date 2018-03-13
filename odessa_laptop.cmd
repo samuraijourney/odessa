@@ -1,2 +1,2 @@
 cd "C:\Users\akkas\OneDrive\Courses\School\EE 516 - Compute Speech Processing\Assignments\Assignment 5"
-c:\python27\python.exe "C:\Users\akkas\OneDrive\Courses\School\EE 516 - Compute Speech Processing\Assignments\Assignment 5\speech_recognizer.py"
+c:\python27\python.exe speech_recognizer.py

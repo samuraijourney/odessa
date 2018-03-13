@@ -6,9 +6,8 @@ import scipy.io.wavfile as wavfile
 
 class HMM_Parameters:
 
-    def __init__(self, nstates, initial_state_vector, transition_matrix, mean_matrix, variance_matrix, data_log_likelihood):
+    def __init__(self, nstates, transition_matrix, mean_matrix, variance_matrix, data_log_likelihood):
         self.__data_log_likelihood = data_log_likelihood
-        self.__initial_state_vector = initial_state_vector
         self.__mean_matrix = mean_matrix
         self.__nstates = nstates
         self.__transition_matrix = transition_matrix
@@ -16,9 +15,6 @@ class HMM_Parameters:
 
     def get_data_log_likelihood(self):
         return self.__data_log_likelihood
-
-    def get_initial_state_vector(self):
-        return self.__initial_state_vector
 
     def get_mean_matrix(self):
         return self.__mean_matrix
