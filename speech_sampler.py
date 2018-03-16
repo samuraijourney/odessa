@@ -274,22 +274,22 @@ class Speech_Sampler():
         zc_end_count = 0
 
         # Look for fricatives
-        # for i in range(0, fricative_lookahead):
-        #     zc_start = np.max(np.sign(zero_crossings[index_start - i] - zero_crossing_threshold), 0)
-        #     zc_start_count = zc_start_count + zc_start
-        #     zc_end = np.max(np.sign(zero_crossings[index_end + i] - zero_crossing_threshold), 0)
-        #     zc_end_count = zc_end_count + zc_end
+        for i in range(0, fricative_lookahead):
+            zc_start = np.max(np.sign(zero_crossings[index_start - i] - zero_crossing_threshold), 0)
+            zc_start_count = zc_start_count + zc_start
+            zc_end = np.max(np.sign(zero_crossings[index_end + i] - zero_crossing_threshold), 0)
+            zc_end_count = zc_end_count + zc_end
 
-        #     # Move N1 to account for trailing fricatives
-        #     if (zc_start == 1) and (zc_start_count >= 3):
-        #         n1 = index_start - i
-        #         self.__energies_min_thresholds[n1] = energy_min_threshold
-        #         self.__energies_max_thresholds[n1] = energy_max_threshold
-        #     # Move N2 to account for leading fricatives
-        #     if (zc_end == 1) and (zc_end_count >= 3):
-        #         n2 = index_end + i
-        #         self.__energies_min_thresholds[n2] = energy_min_threshold
-        #         self.__energies_max_thresholds[n2] = energy_max_threshold
+            # Move N1 to account for trailing fricatives
+            if (zc_start == 1) and (zc_start_count >= 3):
+                n1 = index_start - i
+                self.__energies_min_thresholds[n1] = energy_min_threshold
+                self.__energies_max_thresholds[n1] = energy_max_threshold
+            # Move N2 to account for leading fricatives
+            if (zc_end == 1) and (zc_end_count >= 3):
+                n2 = index_end + i
+                self.__energies_min_thresholds[n2] = energy_min_threshold
+                self.__energies_max_thresholds[n2] = energy_max_threshold
 
         # Phrase is to short, most likely not speech
         if ((n2 - n1) / float(self.__fs)) < 0.25:
