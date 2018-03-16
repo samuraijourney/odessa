@@ -39,6 +39,13 @@ def asr_feature_builder_plot(plot_options):
     elif option == 8:
         feature_builder.plot_signal()
 
+def hmm_plot(plot_options):
+    new_hmm = plot_options.get_hmm()
+    option = plot_options.get_option()
+
+    if option == 9:
+        new_hmm.plot_viterbi_path()
+
 class ASR_Feature_Builder_Plot_Options:
 
         def __init__(self, feature_builder, option, nfilters_to_keep):
@@ -51,6 +58,18 @@ class ASR_Feature_Builder_Plot_Options:
 
         def get_nfilters_to_keep(self):
             return self.__nfilters_to_keep
+
+        def get_option(self):
+            return self.__option
+
+class HMM_Plot_Options:
+
+        def __init__(self, new_hmm, option):
+            self.__hmm = new_hmm
+            self.__option = option
+        
+        def get_hmm(self):
+            return self.__hmm
 
         def get_option(self):
             return self.__option
@@ -87,6 +106,7 @@ class Speech_Recognizer:
         self.__sampler.add_sample_callback(self.__queue_speech_segment)
         self.__sampler.hide_spectrogram_plot()
         self.__sampler.hide_zero_crossing_plot()
+        self.__speech_state_machine.add_speech_match_callback(self.__speech_matched)
 
     def __empty_speech_segment_queue(self):
         self.__queue_lock.acquire(True)
@@ -124,6 +144,7 @@ class Speech_Recognizer:
                             "  13) Plot filter bank filtered spectra sum log dct (mfcc)\n"
                             "  14) Plot mfcc transitions\n"
                             "  15) Plot speech segment\n"
+                            "  16) Plot viterbi path\n"
                             "\n"
                             "To resume you have to exit the plot cause matplotlib is stupid...\n"
                         )
@@ -133,7 +154,7 @@ class Speech_Recognizer:
 
                 try: 
                     option = int(text)
-                    if option > 15:
+                    if option > 16:
                         continue
                     else:
                         invalid_selection = False
@@ -205,6 +226,14 @@ class Speech_Recognizer:
         self.__speech_segments.put(speech_segment)
         self.__queue_lock.release()
 
+    def __speech_matched(self, new_hmm, phrase, log_match_probability, is_primary):
+        plot_options = HMM_Plot_Options( \
+            new_hmm, \
+            self.__plot_option \
+        )
+
+        self.__pool.map(hmm_plot, [plot_options])
+
     def run(self, interactive = True):
         if socket.gethostname() == "DESKTOP-NR96827":
             sd.default.device["output"] = "Speakers (High Definition Audio, MME"
@@ -263,12 +292,6 @@ if __name__ == '__main__':
     what_time_is_it_hmm = os.path.join(hmm_folder_path, "what_time_is_it.hmm")
 
     odessa_threshold = -1500.0
-    play_music_threshold = -1400.0
-    stop_music_threshold = -1600.0
-    turn_on_the_lights_threshold = -1800.0
-    turn_off_the_lights_threshold = -2000.0
-    what_time_is_it_threshold = -2500.0
-
     play_music_threshold = -2200
     stop_music_threshold = -2200
     turn_on_the_lights_threshold = -2200

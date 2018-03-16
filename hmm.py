@@ -1,4 +1,5 @@
 from asr_feature_builder import ASR_Feature_Builder
+import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pickle
@@ -36,6 +37,7 @@ class HMM:
         self.__feature_nfilters = 26
         self.__feature_nfilters_keep = 13
         self.__feature_radius = 2
+        self.__viterbi_path = None
 
     def __compute_gaussian_probability_log(self, feature_vector):
         feature_matrix = np.transpose(np.tile(feature_vector, (self.__nstates, 1)))
@@ -68,13 +70,16 @@ class HMM:
         matches = []
 
         for feature_matrix in feature_matrices:
+            self.__viterbi_path = np.zeros((self.__nstates, feature_matrix.shape[1]))
             match = self.__compute_gaussian_probability_log(feature_matrix[:, 0])[0]
             current_state = 0
+            self.__viterbi_path[current_state, 0] = 1
 
             for t in range(1, feature_matrix.shape[1]):
                 p = self.__compute_gaussian_probability_log(feature_matrix[:, t])
                 log_probabilities = self.__transition_matrix[current_state, :] + p
                 current_state = np.argmax(log_probabilities)
+                self.__viterbi_path[current_state, t] = 1
                 match = match + log_probabilities[current_state]
             
             matches.append(match)
@@ -127,6 +132,14 @@ class HMM:
             feature_matrices.append(feature_matrix)
         
         return self.match_from_feature_matrices(feature_matrices)
+
+    def plot_viterbi_path(self):
+        plt.figure()
+        plt.imshow(self.__viterbi_path, aspect='auto')
+        plt.title("Viterbi path")
+        plt.xlabel('time')
+        plt.ylabel('states')
+        plt.show()
 
     def save(self, file_path):
         file_handle = open(file_path, 'wb')
