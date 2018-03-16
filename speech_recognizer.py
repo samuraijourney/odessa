@@ -86,6 +86,7 @@ class Speech_Recognizer:
         self.__feature_builder.set_plot_blocking(True)
         self.__sampler.add_sample_callback(self.__queue_speech_segment)
         self.__sampler.hide_spectrogram_plot()
+        self.__sampler.hide_zero_crossing_plot()
 
     def __empty_speech_segment_queue(self):
         self.__queue_lock.acquire(True)
