@@ -1,7 +1,5 @@
 # Say hello Odessa!
 
-This is a solo project done as a part of EE516 - Compute Speech Processing at the University of Washington.
-
 Odessa is a basic speech recognition system which can identify very specific phrases of my own speech and respond accordingly,
 with......spunk.
 
